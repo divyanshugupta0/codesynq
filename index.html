@@ -1,283 +1,95 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P2P Code Editor</title>
+    <title>Fire-Nexus</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background: #1e1e1e;
-            color: #fff;
-        }
-
-        .container {
-            display: grid;
-            grid-template-columns: 1fr 300px;
-            height: 100vh;
-        }
-
-        .editor-section {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .controls {
-            padding: 10px;
-            background: #252526;
-            border-bottom: 1px solid #333;
-        }
-
-        #peerId {
-            padding: 5px;
-            margin-right: 10px;
-        }
-
-        .editor-container {
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .CodeMirror {
-            height: 100% !important;
-        }
-
-        .video-section {
-            background: #252526;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .video-container {
-            aspect-ratio: 16/9;
-            background: #000;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        button {
-            padding: 8px 16px;
-            background: #0e639c;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #1177bb;
-        }
-
-        .status {
-            color: #4CAF50;
-            margin: 10px 0;
-        }
-    </style>
+    <link rel ="stylesheet" href="style.css">
 </head>
 <body>
+    <header class="site-header">
+        <h1 class="site-title">Fire-Nexus</h1>
+    </header>
+    <!-- Profile Setup Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <h2>Profile Setup</h2>
+            <p>Please set up your profile to continue</p>
+            <input type="text" id="username" placeholder="Your name" style="width: 100%; margin: 10px 0;">
+            <input type="file" id="profilePic" accept="image/*">
+            <button onclick="saveProfile()">Save Profile</button>
+        </div>
+    </div>
+
+    <!-- Connection Request Modal -->
+    <div id="connectionModal" class="modal">
+        <div class="modal-content">
+            <h2>Connection Request</h2>
+            <p id="connectionRequest"></p>
+            <button onclick="acceptConnection()">Accept</button>
+            <button onclick="rejectConnection()">Reject</button>
+        </div>
+    </div>
+
+    <!-- Profile Edit Modal -->
+    <div id="profileEditModal" class="modal">
+        <div class="modal-content">
+            <h2>Edit Profile</h2>
+            <input type="text" id="editUsername" placeholder="Your name" style="width: 100%; margin: 10px 0;">
+            <input type="file" id="editProfilePic" accept="image/*">
+            <button onclick="updateProfile()">Update Profile</button>
+        </div>
+    </div>
+
     <div class="container">
         <div class="editor-section">
-            <div class="controls">
-                <input type="text" id="peerId" placeholder="Enter peer ID to connect">
-                <button onclick="connectToPeer()">Connect</button>
-                <button onclick="copyMyId()">Copy My ID</button>
-                <div class="status" id="myId"></div>
+            <div class="profile-header">
+                <!-- Add link input container below profile header -->
+                <div class="link-input-container">
+                    <button onclick="shareRoom()">Share Room Link</button>
+                    <span id="roomInfo" class="room-info"></span>
+                </div>
+                <img id="userProfilePic" class="profile-pic" onclick="openProfileEdit()">
+            </div>
+            <div class="editor-mode-banner" id="editorModeBanner">
+                <span class="mode-indicator"></span>
+                <select id="editingMode" class="mode-select" onchange="switchMode(this.value)">
+                    <option value="restricted">Restricted Mode</option>
+                    <option value="freestyle">Freestyle Mode</option>
+                </select>
             </div>
             <div class="editor-container" id="editor"></div>
         </div>
-        <div class="video-section">
-            <div class="video-grid" id="videoGrid"></div>
-            <button onclick="toggleVideo()">Toggle Video</button>
-            <button onclick="toggleAudio()">Toggle Audio</button>
+        
+
+        <div class="right-panel">
+            <div class="video-section">
+                <div class="connected-users">
+                    <h3>Connected Users</h3>
+                    <div id="userList"></div>
+                </div>
+                <div class="video-grid" id="videoGrid"></div>
+                <div class="controls">
+                    <button onclick="toggleVideo()">Toggle Video</button>
+                    <button onclick="toggleAudio()">Toggle Audio</button>
+                    <button onclick="flipCamera()">Flip Camera</button>
+                </div>
+            </div>
+            
+
+            <div class="chat-section">
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chatInput" placeholder="Type a message..." style="flex: 1">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-
-    <script>
-        // Initialize CodeMirror
-        const editor = CodeMirror(document.getElementById('editor'), {
-            mode: 'javascript',
-            theme: 'monokai',
-            lineNumbers: true,
-            autoCloseBrackets: true,
-            matchBrackets: true,
-            indentUnit: 4,
-            tabSize: 4,
-            lineWrapping: true
-        });
-
-        // Initialize PeerJS
-        const peer = new Peer();
-        let myStream;
-        const connections = new Map();
-        let myId = '';
-
-        // Set up PeerJS events
-        peer.on('open', (id) => {
-            myId = id;
-            document.getElementById('myId').textContent = `Your ID: ${id}`;
-            startMedia();
-        });
-
-        peer.on('connection', (conn) => {
-            setupConnection(conn);
-        });
-
-        peer.on('call', (call) => {
-            call.answer(myStream);
-            call.on('stream', (remoteStream) => {
-                addVideoStream(call.peer, remoteStream);
-            });
-        });
-
-        // Set up media stream
-        async function startMedia() {
-            try {
-                myStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                });
-                addVideoStream('me', myStream, true);
-            } catch (err) {
-                console.error('Failed to get media devices:', err);
-                alert('Failed to access camera/microphone');
-            }
-        }
-
-        // Connect to another peer
-        function connectToPeer() {
-            const remotePeerId = document.getElementById('peerId').value.trim();
-            if (!remotePeerId) {
-                alert('Please enter a peer ID');
-                return;
-            }
-
-            // Create data connection
-            const conn = peer.connect(remotePeerId);
-            setupConnection(conn);
-
-            // Create video call
-            if (myStream) {
-                const call = peer.call(remotePeerId, myStream);
-                call.on('stream', (remoteStream) => {
-                    addVideoStream(remotePeerId, remoteStream);
-                });
-            }
-        }
-
-        // Set up connection events
-        function setupConnection(conn) {
-            connections.set(conn.peer, conn);
-
-            conn.on('open', () => {
-                // Send current editor content
-                conn.send({
-                    type: 'code',
-                    content: editor.getValue()
-                });
-            });
-
-            conn.on('data', (data) => {
-                if (data.type === 'code') {
-                    const cursor = editor.getCursor();
-                    editor.setValue(data.content);
-                    editor.setCursor(cursor);
-                }
-            });
-
-            conn.on('close', () => {
-                connections.delete(conn.peer);
-                removeVideoStream(conn.peer);
-            });
-        }
-
-        // Add video stream to grid
-        function addVideoStream(userId, stream, muted = false) {
-            const existingVideo = document.getElementById(`video-${userId}`);
-            if (existingVideo) {
-                existingVideo.remove();
-            }
-
-            const videoContainer = document.createElement('div');
-            videoContainer.className = 'video-container';
-            videoContainer.id = `video-${userId}`;
-            
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            video.autoplay = true;
-            video.playsInline = true;
-            video.muted = muted;
-            
-            videoContainer.appendChild(video);
-            document.getElementById('videoGrid').appendChild(videoContainer);
-        }
-
-        // Remove video stream
-        function removeVideoStream(userId) {
-            const videoContainer = document.getElementById(`video-${userId}`);
-            if (videoContainer) {
-                videoContainer.remove();
-            }
-        }
-
-        // Toggle video
-        function toggleVideo() {
-            if (myStream) {
-                const videoTrack = myStream.getVideoTracks()[0];
-                videoTrack.enabled = !videoTrack.enabled;
-            }
-        }
-
-        // Toggle audio
-        function toggleAudio() {
-            if (myStream) {
-                const audioTrack = myStream.getAudioTracks()[0];
-                audioTrack.enabled = !audioTrack.enabled;
-            }
-        }
-
-        // Copy my ID to clipboard
-        function copyMyId() {
-            navigator.clipboard.writeText(myId);
-            alert('Your ID has been copied to clipboard!');
-        }
-
-        // Sync code changes
-        editor.on('change', (cm, change) => {
-            if (change.origin !== 'setValue') {
-                const content = editor.getValue();
-                connections.forEach(conn => {
-                    conn.send({
-                        type: 'code',
-                        content: content
-                    });
-                });
-            }
-        });
-    </script>
-</body>
-</html>
+    <script src = "script.js"><script>
+    </body>
+    </html>
