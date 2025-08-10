@@ -4,6 +4,7 @@
   "description": "Professional Collaborative Coding Platform",
   "main": "server.js",
   "scripts": {
+    "build": "echo 'No build step required'",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },

@@ -4,6 +4,7 @@
     <title>Login - CodeNexus Pro</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -122,6 +123,8 @@
         
         document.getElementById('googleLoginBtn').onclick = async () => {
             const provider = new firebase.auth.GoogleAuthProvider();
+            provider.addScope('email');
+            provider.addScope('profile');
             
             try {
                 if (isMobile) {
@@ -133,14 +136,16 @@
                     }
                 }
             } catch (error) {
-                if (error.code !== 'auth/popup-closed-by-user') {
-                    alert('Login failed. Please try again.');
+                console.error('Google login error:', error);
+                if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+                    alert('Google login failed: ' + (error.message || 'Please try again'));
                 }
             }
         };
         
         document.getElementById('githubLoginBtn').onclick = async () => {
             const provider = new firebase.auth.GithubAuthProvider();
+            provider.addScope('user:email');
             
             try {
                 if (isMobile) {
@@ -152,8 +157,9 @@
                     }
                 }
             } catch (error) {
-                if (error.code !== 'auth/popup-closed-by-user') {
-                    alert('Login failed. Please try again.');
+                console.error('GitHub login error:', error);
+                if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+                    alert('GitHub login failed: ' + (error.message || 'Please try again'));
                 }
             }
         };
@@ -163,8 +169,11 @@
             if (result && result.user) {
                 window.location.href = 'index.html';
             }
-        }).catch(() => {
-            // Silently handle redirect errors
+        }).catch((error) => {
+            console.error('Redirect result error:', error);
+            if (error.code && error.code !== 'auth/popup-closed-by-user') {
+                alert('Authentication failed: ' + (error.message || 'Please try again'));
+            }
         });
     </script>
 </body>
