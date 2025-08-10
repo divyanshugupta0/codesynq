@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CodeNexus Pro - Standalone Mode</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-content">
+            <h1 class="site-title"><i class="fas fa-code"></i> CodeNexus Pro</h1>
+            <div class="header-actions">
+                <button id="themeToggle" class="btn-icon"><i class="fas fa-moon"></i></button>
+                <button id="settingsBtn" class="btn-icon"><i class="fas fa-cog"></i></button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="editor-section">
+            <div class="editor-toolbar">
+                <div class="toolbar-left">
+                    <select id="languageSelect" class="select-modern">
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                        <option value="java">Java</option>
+                    </select>
+                    <button id="runCode" class="btn-primary"><i class="fas fa-play"></i> Run</button>
+                    <button id="saveCode" class="btn-secondary"><i class="fas fa-save"></i> Save</button>
+                </div>
+                <div class="toolbar-right">
+                    <span id="roomStatus" class="status-indicator connected">Standalone Mode</span>
+                </div>
+            </div>
+            <div class="editor-container" id="editor"></div>
+            <div class="output-section">
+                <div class="output-tabs">
+                    <button class="tab-btn active" data-tab="console">Console</button>
+                    <button class="tab-btn" data-tab="preview">Preview</button>
+                </div>
+                <div id="console" class="output-panel active">Welcome to CodeNexus Pro Standalone Mode!</div>
+                <div id="preview" class="output-panel"></div>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="panel-tabs">
+                <button class="panel-tab active" data-panel="info"><i class="fas fa-info"></i> Info</button>
+            </div>
+            
+            <div id="info-panel" class="panel-content active">
+                <div class="users-header">
+                    <h3>Standalone Mode</h3>
+                </div>
+                <div style="padding: 1rem;">
+                    <p>This is the standalone version of CodeNexus Pro.</p>
+                    <p>Features available:</p>
+                    <ul style="margin: 1rem 0; padding-left: 1.5rem;">
+                        <li>Code editing with syntax highlighting</li>
+                        <li>JavaScript execution</li>
+                        <li>HTML preview</li>
+                        <li>Code saving</li>
+                    </ul>
+                    <p>To use the full collaborative features, start the server with <code>npm start</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CodeMirror -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    
+    <script>
+        let editor;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize editor
+            editor = CodeMirror(document.getElementById('editor'), {
+                mode: 'javascript',
+                theme: 'monokai',
+                lineNumbers: true,
+                autoCloseBrackets: true,
+                matchBrackets: true,
+                indentUnit: 2,
+                tabSize: 2,
+                lineWrapping: true,
+                value: '// Welcome to CodeNexus Pro Standalone!\n// Start coding here...\n\nconsole.log("Hello, World!");'
+            });
+
+            // Language selector
+            document.getElementById('languageSelect').addEventListener('change', function(e) {
+                const modes = {
+                    javascript: 'javascript',
+                    python: 'python',
+                    html: 'xml',
+                    css: 'css',
+                    java: 'text/x-java'
+                };
+                editor.setOption('mode', modes[e.target.value] || 'javascript');
+            });
+
+            // Run code
+            document.getElementById('runCode').addEventListener('click', function() {
+                const code = editor.getValue();
+                const language = document.getElementById('languageSelect').value;
+                
+                if (language === 'javascript') {
+                    try {
+                        const originalLog = console.log;
+                        let output = '';
+                        console.log = function(...args) {
+                            output += args.join(' ') + '\n';
+                        };
+                        
+                        eval(code);
+                        console.log = originalLog;
+                        
+                        const consolePanel = document.getElementById('console');
+                        const timestamp = new Date().toLocaleTimeString();
+                        consolePanel.innerHTML += `<div>[${timestamp}] ${output}</div>`;
+                        consolePanel.scrollTop = consolePanel.scrollHeight;
+                        
+                        switchTab('console');
+                    } catch (error) {
+                        const consolePanel = document.getElementById('console');
+                        const timestamp = new Date().toLocaleTimeString();
+                        consolePanel.innerHTML += `<div style="color: #f44336;">[${timestamp}] Error: ${error.message}</div>`;
+                        consolePanel.scrollTop = consolePanel.scrollHeight;
+                        switchTab('console');
+                    }
+                } else if (language === 'html') {
+                    const preview = document.getElementById('preview');
+                    preview.innerHTML = `<iframe srcdoc="${code.replace(/"/g, '&quot;')}" style="width:100%;height:100%;border:none;"></iframe>`;
+                    switchTab('preview');
+                }
+            });
+
+            // Save code
+            document.getElementById('saveCode').addEventListener('click', function() {
+                const code = editor.getValue();
+                const language = document.getElementById('languageSelect').value;
+                const extensions = {
+                    javascript: 'js',
+                    python: 'py',
+                    html: 'html',
+                    css: 'css',
+                    java: 'java'
+                };
+                
+                const blob = new Blob([code], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `code.${extensions[language] || 'txt'}`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            // Tab switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    switchTab(e.target.dataset.tab);
+                });
+            });
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.output-panel').forEach(panel => panel.classList.remove('active'));
+            
+            const tabBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            const panel = document.getElementById(tabName);
+            
+            if (tabBtn) tabBtn.classList.add('active');
+            if (panel) panel.classList.add('active');
+        }
+    </script>
+</body>
+</html>

@@ -1,89 +1,191 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Fire-Nexus</title>
+    <title>CodeNexus Pro - Professional Collaborative Coding</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
-    <link rel ="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/vscode-dark.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
     <link rel="icon" href="logo22.png" type="x-icon">
 </head>
 <body>
     <header class="site-header">
-        <h1 class="site-title">Fire-Nexus</h1>
+        <div class="header-content">
+            <h1 class="site-title"><i class="fas fa-code"></i> CodeNexus Pro</h1>
+            <div class="header-actions">
+                <button id="themeToggle" class="btn-icon"><i class="fas fa-moon"></i></button>
+                <button id="settingsBtn" class="btn-icon"><i class="fas fa-cog"></i></button>
+                <button id="loginBtn" class="btn-primary" style="display: none;"><i class="fas fa-sign-in-alt"></i> Login</button>
+                <button id="signupBtn" class="btn-secondary" style="display: none;"><i class="fas fa-user-plus"></i> Sign Up</button>
+                <div class="profile-dropdown" style="display: none;">
+                    <button id="profileBtn" class="btn-icon"><i class="fas fa-user"></i></button>
+                    <div id="profileMenu" class="dropdown-menu">
+                        <div class="profile-info">
+                            <span id="profileName">User</span>
+                            <span id="profileEmail">user@email.com</span>
+                        </div>
+                        <button onclick="signOut()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </header>
-    <!-- Profile Setup Modal -->
-    <div id="profileModal" class="modal">
-        <div class="modal-content">
-            <h2>Profile Setup</h2>
-            <p>Please set up your profile to continue</p>
-            <input type="text" id="username" placeholder="Your name" style="width: 100%; margin: 10px 0;">
-            <input type="file" id="profilePic" accept="image/*">
-            <button onclick="saveProfile()">Save Profile</button>
-        </div>
-    </div>
 
-    <!-- Connection Request Modal -->
-    <div id="connectionModal" class="modal">
-        <div class="modal-content">
-            <h2>Connection Request</h2>
-            <p id="connectionRequest"></p>
-            <button onclick="acceptConnection()">Accept</button>
-            <button onclick="rejectConnection()">Reject</button>
-        </div>
-    </div>
-
-    <!-- Profile Edit Modal -->
-    <div id="profileEditModal" class="modal">
-        <div class="modal-content">
-            <h2>Edit Profile</h2>
-            <input type="text" id="editUsername" placeholder="Your name" style="width: 100%; margin: 10px 0;">
-            <input type="file" id="editProfilePic" accept="image/*">
-            <button onclick="updateProfile()">Update Profile</button>
-        </div>
-    </div>
 
     <div class="container">
         <div class="editor-section">
-            <div class="profile-header">
-                <!-- Add link input container below profile header -->
-                <div class="link-input-container">
-                    <button onclick="shareRoom()">Share Room Link</button>
-                    <span id="roomInfo" class="room-info"></span>
+            <div class="editor-toolbar">
+                <div class="toolbar-left">
+                    <select id="languageSelect" class="select-modern">
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                        <option value="java">Java</option>
+                        <option value="c">C</option>
+                        <option value="cpp">C++</option>
+                    </select>
+                    <button id="runCode" class="btn-primary"><i class="fas fa-play"></i> Run</button>
+                    <button id="saveCode" class="btn-secondary"><i class="fas fa-save"></i> <span id="saveText">Save</span></button>
+                    <button id="seeSavedCodes" class="btn-secondary" style="display: none;"><i class="fas fa-folder-open"></i> Saved Codes</button>
                 </div>
-                <img id="userProfilePic" class="profile-pic" onclick="openProfileEdit()">
-            </div>
-            <div class="editor-mode-banner" id="editorModeBanner">
-                <span class="mode-indicator"></span>
-                <select id="editingMode" class="mode-select" onchange="switchMode(this.value)">
-                    <option value="restricted">Restricted Mode</option>
-                    <option value="freestyle">Freestyle Mode</option>
-                </select>
+                <div class="toolbar-right">
+                    <div class="collaboration-status">
+                        <button id="collaborateBtn" class="btn-success"><i class="fas fa-users"></i> Collaborate</button>
+                        <div id="collaboratingLabel" class="collaborating-dropdown" style="display: none;">
+                            <button id="sessionInfoBtn" class="btn-success"><i class="fas fa-users"></i> Collaborating</button>
+                            <div id="sessionDropdown" class="session-dropdown">
+                                <div class="session-info">
+                                    <div><strong>Room ID:</strong> <span id="dropdownRoomId"></span></div>
+                                    <div><strong>Mode:</strong> <span id="dropdownMode"></span></div>
+                                    <div><strong>Share Link:</strong></div>
+                                    <input type="text" id="dropdownShareLink" readonly>
+                                    <button id="copyDropdownLink" class="btn-secondary">Copy</button>
+                                    <button id="endSession" class="btn-danger">End Session</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <span id="roomStatus" class="status-indicator">Solo Mode</span>
+                </div>
             </div>
             <div class="editor-container" id="editor"></div>
+            <div class="resizer" id="resizer"></div>
+            <div class="output-section">
+                <div class="output-tabs">
+                    <button class="tab-btn" data-tab="console">Console</button>
+                    <button class="tab-btn active" data-tab="terminal">Terminal</button>
+                    <button class="tab-btn" data-tab="preview">Preview</button>
+                </div>
+                <div id="console" class="output-panel"></div>
+                <div id="terminal" class="output-panel active"></div>
+                <div id="preview" class="output-panel"></div>
+            </div>
         </div>
         
 
-        <div class="right-panel">
-            <div class="video-section">
-                <div class="connected-users">
-                    <h3>Connected Users</h3>
-                    <div id="userList"></div>
+        <div class="right-panel" id="rightPanel" style="display: none;">
+            <div class="panel-tabs">
+                <button class="panel-tab active" data-panel="users"><i class="fas fa-users"></i> Users</button>
+                <button class="panel-tab" data-panel="chat"><i class="fas fa-comments"></i> Chat</button>
+                <button class="panel-tab" data-panel="video"><i class="fas fa-video"></i> Video</button>
+            </div>
+            
+            <div id="users-panel" class="panel-content active">
+                <div class="users-header">
+                    <h3>Connected Users (<span id="userCount">0</span>)</h3>
+                    <div class="collaboration-controls">
+                        <button id="editModeBtn" class="btn-secondary">Freestyle Mode</button>
+                        <span id="currentEditor">You are editing</span>
+                    </div>
                 </div>
-                <div class="video-grid" id="videoGrid"></div>
-                <div class="controls">
-                    <button onclick="toggleVideo()">Toggle Video</button>
-                    <button onclick="toggleAudio()">Toggle Audio</button>
-                    <button onclick="flipCamera()">Flip Camera</button>
+                <div id="userList" class="users-list"></div>
+            </div>
+            
+            <div id="chat-panel" class="panel-content">
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chatInput" placeholder="Type a message...">
+                    <button id="sendMessage" class="btn-icon"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </div>
             
-
-            <div class="chat-section">
-                <div class="chat-messages" id="chatMessages"></div>
-                <div class="chat-input">
-                    <input type="text" id="chatInput" placeholder="Type a message..." style="flex: 1">
-                    <button onclick="sendMessage()">Send</button>
+            <div id="video-panel" class="panel-content">
+                <div class="video-grid" id="videoGrid"></div>
+                <div class="video-controls">
+                    <button id="toggleVideo" class="btn-icon"><i class="fas fa-video"></i></button>
+                    <button id="toggleAudio" class="btn-icon"><i class="fas fa-microphone"></i></button>
+                    <button id="flipCamera" class="btn-icon"><i class="fas fa-sync-alt"></i></button>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Save Code Modal -->
+    <div id="saveCodeModal" class="modal">
+        <div class="modal-content">
+            <h2>Save Code</h2>
+            <div class="form-group">
+                <label>File Name:</label>
+                <input type="text" id="fileNameInput" placeholder="Enter file name...">
+            </div>
+            <div class="modal-actions">
+                <button id="confirmSave" class="btn-primary">Save</button>
+                <button id="cancelSave" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Saved Codes Modal -->
+    <div id="savedCodesModal" class="modal">
+        <div class="modal-content saved-codes-modal">
+            <h2>Saved Codes</h2>
+            <div id="savedCodesList" class="saved-codes-list"></div>
+            <div class="modal-actions">
+                <button id="closeSavedCodes" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Code Preview Modal -->
+    <div id="codePreviewModal" class="modal">
+        <div class="modal-content code-preview-modal">
+            <h2 id="previewTitle">Code Preview</h2>
+            <div id="codePreview" class="code-preview"></div>
+            <div class="modal-actions">
+                <button id="loadCode" class="btn-primary">Load Code</button>
+                <button id="deleteCode" class="btn-danger">Delete</button>
+                <button id="closePreview" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Collaboration Modal -->
+    <div id="collaborationModal" class="modal">
+        <div class="modal-content">
+            <h2>Start Collaboration Session</h2>
+            <div class="form-group">
+                <label>Room ID:</label>
+                <input type="text" id="roomIdInput" readonly>
+                <button id="generateRoomId" class="btn-secondary">Generate New</button>
+            </div>
+            <div class="form-group">
+                <label>Share Link:</label>
+                <input type="text" id="shareLink" readonly>
+                <button id="copyLink" class="btn-secondary">Copy Link</button>
+            </div>
+            <div class="form-group">
+                <label>Collaboration Mode:</label>
+                <select id="collaborationMode">
+                    <option value="freestyle">Freestyle - All can edit</option>
+                    <option value="restricted">Restricted - Request to edit</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button id="startCollaboration" class="btn-primary">Start Session</button>
+                <button id="cancelCollaboration" class="btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -98,9 +200,153 @@
         a.appendChild(r);
     })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');
 </script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- CodeMirror -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    
+    <!-- WebRTC -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="script.js"></script>
+    
+    <!-- App Scripts -->
+    <script src="app.js"></script>
+    
+    <!-- Firebase Configuration -->
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-SfBy_r93JDZOrYM8YUaokyNDXolVUzI",
+            authDomain: "codenexus-cbb96.firebaseapp.com",
+            databaseURL: "https://codenexus-cbb96-default-rtdb.firebaseio.com",
+            projectId: "codenexus-cbb96",
+            storageBucket: "codenexus-cbb96.firebasestorage.app",
+            messagingSenderId: "11546353758",
+            appId: "1:11546353758:web:e280574d9e6d9d6c1fd4cf",
+            measurementId: "G-NQMWQB4ZXK"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+        
+        // Auth state listener
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                window.currentUser = {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName || user.email.split('@')[0],
+                    photoURL: user.photoURL || `https://via.placeholder.com/40/007acc/ffffff?text=${(user.displayName || user.email).charAt(0).toUpperCase()}`
+                };
+                updateUIForLoggedInUser();
+                loadUserCode();
+            } else {
+                window.currentUser = null;
+                updateUIForLoggedOutUser();
+            }
+        });
+        
+        function updateUIForLoggedInUser() {
+            document.getElementById('loginBtn').style.display = 'none';
+            document.getElementById('signupBtn').style.display = 'none';
+            document.querySelector('.profile-dropdown').style.display = 'block';
+            document.getElementById('profileName').textContent = window.currentUser.displayName;
+            document.getElementById('profileEmail').textContent = window.currentUser.email;
+            
+            // Update save button for logged in user
+            const saveBtn = document.getElementById('saveCode');
+            const saveText = document.getElementById('saveText');
+            const seeSavedBtn = document.getElementById('seeSavedCodes');
+            
+            if (saveBtn) {
+                saveBtn.classList.remove('login-required');
+                if (saveText) saveText.textContent = 'Save';
+            }
+            if (seeSavedBtn) {
+                seeSavedBtn.style.display = 'flex';
+            }
+        }
+        
+        function updateUIForLoggedOutUser() {
+            document.getElementById('loginBtn').style.display = 'block';
+            document.getElementById('signupBtn').style.display = 'block';
+            document.querySelector('.profile-dropdown').style.display = 'none';
+            
+            // Update save button for non-logged in user
+            const saveBtn = document.getElementById('saveCode');
+            const saveText = document.getElementById('saveText');
+            const seeSavedBtn = document.getElementById('seeSavedCodes');
+            
+            if (saveBtn) {
+                saveBtn.classList.add('login-required');
+                if (saveText) saveText.textContent = 'Login to Save';
+            }
+            if (seeSavedBtn) {
+                seeSavedBtn.style.display = 'none';
+            }
+        }
+        
+        window.signOut = function() {
+            auth.signOut();
+        };
+        
+        window.saveUserCode = function() {
+            if (!window.currentUser) return;
+            const code = window.editor ? window.editor.getValue() : '';
+            const language = document.getElementById('languageSelect').value;
+            
+            database.ref(`users/${window.currentUser.uid}/code`).set({
+                content: code,
+                language: language,
+                lastModified: firebase.database.ServerValue.TIMESTAMP
+            });
+        };
+        
+        function loadUserCode() {
+            if (!window.currentUser || !window.editor) return;
+            database.ref(`users/${window.currentUser.uid}/code`).once('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && window.editor) {
+                    window.editor.setValue(data.content);
+                    document.getElementById('languageSelect').value = data.language;
+                    if (window.getCodeMirrorMode) {
+                        const mode = window.getCodeMirrorMode(data.language);
+                        window.editor.setOption('mode', mode);
+                    }
+                }
+            });
+        }
+        
+        // Login/Signup handlers
+        document.getElementById('loginBtn').onclick = () => {
+            window.location.href = 'login.html';
+        };
+        
+        document.getElementById('signupBtn').onclick = () => {
+            window.location.href = 'signup.html';
+        };
+        
+        // Profile dropdown toggle
+        document.getElementById('profileBtn').onclick = (e) => {
+            e.stopPropagation();
+            const menu = document.getElementById('profileMenu');
+            menu.classList.toggle('show');
+        };
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            document.getElementById('profileMenu').classList.remove('show');
+        });
+    </script>
     </body>
     </html>
