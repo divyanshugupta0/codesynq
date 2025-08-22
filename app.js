@@ -139,6 +139,14 @@ function tryServerConnection() {
                 // Clear execution flag to prevent fallback
                 window.executionId = null;
                 
+                // Reset run button
+                resetRunButton();
+                
+                // Clear terminal first to remove any fallback messages
+                if (data.language !== 'javascript') {
+                    clearTerminal();
+                }
+                
                 if (data.language === 'javascript') {
                     displayOutput(data.output, data.error);
                 } else {
@@ -876,9 +884,24 @@ function setupResizer() {
     });
 }
 
+function resetRunButton() {
+    const runBtn = document.getElementById('runCode');
+    if (runBtn) {
+        runBtn.innerHTML = '<i class="fas fa-play"></i> Run';
+        runBtn.disabled = false;
+    }
+}
+
 function executeCode() {
     const code = editor && editor.getValue ? editor.getValue() : document.getElementById('fallback-editor')?.value || '';
     const language = document.getElementById('languageSelect').value;
+    const runBtn = document.getElementById('runCode');
+    
+    // Show loading state
+    if (runBtn) {
+        runBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+        runBtn.disabled = true;
+    }
     
     console.log('=== EXECUTE CODE DEBUG ===');
     console.log('Language:', language);
@@ -902,13 +925,14 @@ function executeCode() {
             executionId: currentExecutionId
         });
         
-        // Fallback after 3 seconds if no server response
+        // Fallback after 8 seconds if no server response
         setTimeout(() => {
             if (window.executionId === currentExecutionId) {
                 console.log('No server response, running locally');
+                resetRunButton();
                 runCodeLocally(code, language);
             }
-        }, 3000);
+        }, 8000);
         
         // Show HTML preview immediately for better UX
         if (language === 'html') {
@@ -919,6 +943,7 @@ function executeCode() {
     
     // Fallback to local execution
     console.log('Running locally (server not connected)');
+    resetRunButton();
     runCodeLocally(code, language);
 
     if (language === 'html') {
@@ -1611,7 +1636,7 @@ function runCodeLocally(code, language) {
                 displayOutputInTerminal('', 'Python requires server connection with Python interpreter installed.');
                 break;
             case 'java':
-                displayOutputInTerminal('', 'Java: JDK detected but server needs Java execution handler. Check server logs.');
+                displayOutputInTerminal('', 'Java execution requires server connection. Please wait for server response...');
                 break;
             case 'c':
                 displayOutputInTerminal('', 'C: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH');
