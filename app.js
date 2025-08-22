@@ -86,11 +86,15 @@ function tryServerConnection() {
     // Check if Socket.IO is available and try to connect
     if (typeof io !== 'undefined') {
         try {
-            console.log('🔌 Attempting to connect to server at http://localhost:3000');
+            console.log('🔌 Attempting to connect to server');
             updateStatus('connecting');
             
-            window.socket = io('http://localhost:3000', { 
-                timeout: 2000,
+            // Use current domain for production, localhost for development
+            const serverUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+            console.log('Connecting to:', serverUrl);
+            
+            window.socket = io(serverUrl, { 
+                timeout: 5000,
                 forceNew: true,
                 transports: ['websocket', 'polling']
             });
