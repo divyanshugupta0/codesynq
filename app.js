@@ -37,7 +37,7 @@ function initializeApp() {
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
     if (roomId) {
-        joinCollaborationRoom(roomId);
+        setTimeout(() => joinCollaborationRoom(roomId), 2000);
     }
     
     } catch (error) {
@@ -86,7 +86,10 @@ function tryServerConnection() {
     // Check if Socket.IO is available and try to connect
     if (typeof io !== 'undefined') {
         try {
-            window.socket = io({ 
+            console.log('🔌 Attempting to connect to server at http://localhost:3000');
+            updateStatus('connecting');
+            
+            window.socket = io('http://localhost:3000', { 
                 timeout: 2000,
                 forceNew: true,
                 transports: ['websocket', 'polling']
@@ -95,8 +98,9 @@ function tryServerConnection() {
             let connected = false;
             
             window.socket.on('connect', function() {
-                console.log('Connected to server');
+                console.log('✅ Connected to server successfully');
                 connected = true;
+                clearTimeout(forceTimeout);
                 updateStatus('connected');
                 
                 // Always create a default room for code execution
@@ -104,25 +108,13 @@ function tryServerConnection() {
                     window.currentRoom = 'solo-' + Date.now();
                 }
                 
-                const user = window.currentUser || { 
-                    id: 'guest-' + Date.now(), 
-                    username: 'Guest', 
-                    profilePic: 'https://via.placeholder.com/40/666/ffffff?text=G' 
-                };
-                
-                window.socket.emit('join-room', {
-                    roomId: window.currentRoom,
-                    user: user
-                });
-                
                 console.log('Joined room:', window.currentRoom);
             });
             
             window.socket.on('connect_error', function(error) {
-                console.log('Server connection error:', error);
-                if (!connected) {
-                    updateStatus('offline');
-                }
+                console.log('❌ Server connection error:', error);
+                connected = false;
+                updateStatus('offline');
             });
             
             window.socket.on('disconnect', function() {
@@ -131,10 +123,25 @@ function tryServerConnection() {
             });
             
             window.socket.on('execution-result', function(data) {
-                displayOutputInTerminal(data.output, data.error);
+                console.log('Execution result received:', data);
+                
+                // Clear execution flag to prevent fallback
+                window.executionId = null;
+                
+                if (data.language === 'javascript') {
+                    displayOutput(data.output, data.error);
+                } else {
+                    displayOutputInTerminal(data.output, data.error);
+                }
+                // Handle HTML preview
+                if (data.htmlContent) {
+                    showPreview(data.htmlContent);
+                }
             });
             
             window.socket.on('terminal-output', function(data) {
+                // Clear execution flag since server is responding
+                window.executionId = null;
                 displayRealTimeOutput(data.text, data.type);
             });
             
@@ -142,9 +149,54 @@ function tryServerConnection() {
                 clearTerminal();
             });
             
+            window.socket.on('user-joined', function(data) {
+                updateUserList(data.users);
+                displayChatMessage({
+                    user: 'System',
+                    message: `${data.user.username} joined the session`,
+                    timestamp: Date.now()
+                });
+            });
+            
+            window.socket.on('user-left', function(data) {
+                updateUserList(data.users);
+                displayChatMessage({
+                    user: 'System',
+                    message: `${data.user.username} left the session`,
+                    timestamp: Date.now()
+                });
+            });
+            
+            window.socket.on('video-call-start', function(data) {
+                if (peer && localStream && data.peerId !== peer.id) {
+                    const call = peer.call(data.peerId, localStream);
+                    call.on('stream', (remoteStream) => {
+                        addVideoStream(data.peerId, remoteStream);
+                    });
+                    connections.set(data.peerId, call);
+                }
+            });
+            
+            window.socket.on('video-call-end', function(data) {
+                const videoElement = document.getElementById(`video-${data.peerId}`);
+                if (videoElement) {
+                    videoElement.remove();
+                }
+                if (connections.has(data.peerId)) {
+                    connections.get(data.peerId).close();
+                    connections.delete(data.peerId);
+                }
+            });
+            
             window.socket.on('edit-request', function(data) {
-                if (isHost) {
+                if (currentEditor === window.currentUser?.uid) {
                     showEditRequest(data.user);
+                }
+            });
+            
+            window.socket.on('cursor-position', function(data) {
+                if (currentEditMode === 'freestyle' && data.userId !== window.currentUser?.uid) {
+                    showRemoteCursor(data);
                 }
             });
             
@@ -155,6 +207,12 @@ function tryServerConnection() {
             
             window.socket.on('edit-mode-changed', function(data) {
                 currentEditMode = data.mode;
+                if (data.currentEditor) {
+                    currentEditor = data.currentEditor;
+                }
+                if (data.mode === 'restricted') {
+                    clearRemoteCursors();
+                }
                 updateEditorPermissions();
             });
             
@@ -162,29 +220,102 @@ function tryServerConnection() {
                 displayChatMessage(data);
             });
             
-            // Immediate check - if not connected within 2 seconds, assume offline
-            setTimeout(() => {
-                if (!connected) {
-                    console.log('Server not responding after 2 seconds - running in offline mode');
-                    console.log('Socket state:', window.socket.connected, window.socket.disconnected);
-                    updateStatus('offline');
-                    window.socket.disconnect();
+            window.socket.on('code-updated', function(data) {
+                if (editor && !isEditing) {
+                    const cursorPos = editor.getCursor();
+                    editor.setValue(data.code);
+                    editor.setCursor(cursorPos);
+                    document.getElementById('languageSelect').value = data.language;
+                    const mode = window.getCodeMirrorMode(data.language);
+                    editor.setOption('mode', mode);
                 }
-            }, 2000);
+            });
+            
+            window.socket.on('room-joined', function(data) {
+                console.log('Room joined event received:', data);
+                if (editor) {
+                    editor.setValue(data.code);
+                    document.getElementById('languageSelect').value = data.language;
+                    const mode = window.getCodeMirrorMode(data.language);
+                    editor.setOption('mode', mode);
+                }
+                currentEditMode = data.mode || 'freestyle';
+                if (data.host && window.currentUser && data.host === window.currentUser.uid) {
+                    isHost = true;
+                }
+                if (data.mode === 'restricted') {
+                    currentEditor = data.currentEditor || data.host;
+                } else {
+                    currentEditor = null;
+                }
+                isCollaborating = true;
+                setTimeout(() => updateEditorPermissions(), 100);
+            });
+            
+            window.socket.on('edit-rejected', function() {
+                showNotification('Edit request rejected');
+            });
+            
+            // Store timeout reference for clearing
+            // Force timeout after 1 second
+            const forceTimeout = setTimeout(() => {
+                if (!connected) {
+                    console.log('⚠️ Connection timeout - switching to solo mode');
+                    updateStatus('offline');
+                    if (window.socket) {
+                        window.socket.disconnect();
+                    }
+                }
+            }, 1000);
+            
+            // Clear timeout if connected
+            window.socket.on('connect', function() {
+                clearTimeout(forceTimeout);
+            });
             
         } catch (error) {
-            console.log('Socket.IO connection failed:', error);
+            console.log('❌ Socket.IO connection failed:', error);
             updateStatus('offline');
         }
     } else {
-        console.log('Socket.IO not loaded - running in offline mode');
+        console.log('❌ Socket.IO not loaded - running in offline mode');
         updateStatus('offline');
     }
 }
 
 function setupProfile() {
-    // Profile setup handled by Firebase auth
-    // currentUser will be set by auth state listener
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+        firebase.auth().onAuthStateChanged((user) => {
+            console.log('Auth state changed:', user ? 'logged in' : 'logged out', 'Previous user:', window.currentUser);
+            const wasLoggedOut = !window.currentUser;
+            
+            if (user && wasLoggedOut) {
+                console.log('User just logged in, attempting to restore content');
+                window.currentUser = user;
+                
+                // Load user preferences from Firebase with delay
+                setTimeout(() => loadUserPreferences(), 1000);
+                
+                // Restore content immediately
+                setTimeout(() => {
+                    if (editor && editor.getValue) {
+                        restoreEditorContent();
+                    }
+                }, 500);
+            } else if (!user && window.currentUser) {
+                console.log('User logged out, saving content');
+                saveEditorContent();
+                window.currentUser = null;
+            } else if (user) {
+                console.log('User already logged in');
+                window.currentUser = user;
+                // Load preferences for already logged-in users
+                setTimeout(() => loadUserPreferences(), 500);
+            } else {
+                console.log('No user, no previous user');
+            }
+        });
+    }
 }
 
 function setupEditor() {
@@ -208,6 +339,51 @@ function setupEditor() {
         });
         
         window.editor = editor;
+        window.isEditing = false;
+        
+        // Add real-time collaboration and auto-save
+        editor.on('change', function(instance, changeObj) {
+            // Block changes if in restricted mode and user doesn't have edit rights
+            if (currentEditMode === 'restricted' && currentEditor !== window.currentUser?.uid) {
+                return;
+            }
+            
+            // Auto-save to cache for non-logged users
+            if (!window.currentUser) {
+                clearTimeout(window.autoSaveTimeout);
+                window.autoSaveTimeout = setTimeout(saveEditorContent, 500);
+            }
+            
+            if (isCollaborating && window.socket && window.socket.connected && window.currentRoom) {
+                window.isEditing = true;
+                clearTimeout(window.editTimeout);
+                window.editTimeout = setTimeout(() => {
+                    window.isEditing = false;
+                }, 100);
+                
+                const code = instance.getValue();
+                const language = document.getElementById('languageSelect').value;
+                window.socket.emit('code-change', {
+                    roomId: window.currentRoom,
+                    code: code,
+                    language: language
+                });
+            }
+        });
+        
+        // Add cursor tracking for freestyle mode
+        editor.on('cursorActivity', function(instance) {
+            if (isCollaborating && currentEditMode === 'freestyle' && window.socket && window.socket.connected && window.currentRoom) {
+                const cursor = instance.getCursor();
+                window.socket.emit('cursor-position', {
+                    roomId: window.currentRoom,
+                    userId: window.currentUser?.uid,
+                    userName: window.currentUser?.displayName,
+                    line: cursor.line,
+                    ch: cursor.ch
+                });
+            }
+        });
         
         console.log('Editor created successfully');
     } catch (error) {
@@ -222,11 +398,30 @@ function setupUI() {
     const languageSelect = document.getElementById('languageSelect');
     if (languageSelect) {
         languageSelect.addEventListener('change', function(e) {
-            const mode = window.getCodeMirrorMode(e.target.value);
-            if (editor && editor.setOption) {
-                editor.setOption('mode', mode);
+            // Skip validation during restoration
+            if (window.isRestoring) {
+                const newLanguage = e.target.value;
+                languageSelect.dataset.previousValue = newLanguage;
+                return;
+            }
+            
+            const newLanguage = e.target.value;
+            const currentCode = editor ? editor.getValue() : '';
+            
+            // Auto-save before language change for non-logged users
+            if (!window.currentUser && currentCode.trim()) {
+                saveEditorContent();
+            }
+            
+            if (currentCode.trim() && currentCode !== getDefaultCode(languageSelect.dataset.previousValue || 'javascript')) {
+                e.target.value = languageSelect.dataset.previousValue || 'javascript';
+                showLanguageSwitchModal(newLanguage);
+            } else {
+                switchLanguage(newLanguage);
             }
         });
+        
+        languageSelect.dataset.previousValue = languageSelect.value;
     }
 
     // Run code button
@@ -239,6 +434,12 @@ function setupUI() {
     const saveBtn = document.getElementById('saveCode');
     if (saveBtn) {
         saveBtn.addEventListener('click', saveCode);
+    }
+    
+    // Live preview button
+    const livePreviewBtn = document.getElementById('livePreview');
+    if (livePreviewBtn) {
+        livePreviewBtn.addEventListener('click', toggleLivePreview);
     }
     
     // See saved codes button
@@ -266,6 +467,13 @@ function setupUI() {
         document.getElementById('codePreviewModal').style.display = 'none';
     });
     
+    // Language switch modal handlers
+    document.getElementById('saveBeforeSwitch').addEventListener('click', saveBeforeLanguageSwitch);
+    document.getElementById('trashAndSwitch').addEventListener('click', trashAndSwitch);
+    document.getElementById('cancelSwitch').addEventListener('click', () => {
+        document.getElementById('languageSwitchModal').style.display = 'none';
+    });
+    
     // Enter key for save modal
     document.getElementById('fileNameInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -286,6 +494,12 @@ function setupUI() {
             switchTab(e.target.dataset.tab);
         });
     });
+    
+    // New window button
+    const newWindowBtn = document.getElementById('openNewWindow');
+    if (newWindowBtn) {
+        newWindowBtn.addEventListener('click', openPreviewInNewWindow);
+    }
 
     // Panel switching
     document.querySelectorAll('.panel-tab').forEach(btn => {
@@ -299,6 +513,36 @@ function setupUI() {
     
     // Setup theme and settings
     setupThemeAndSettings();
+    
+    // Setup layout controls
+    setupLayoutControls();
+    
+    // Initialize live preview visibility
+    updateLivePreviewVisibility(document.getElementById('languageSelect').value);
+    
+    // Initialize theme
+    setTimeout(() => {
+        if (window.currentUser) {
+            loadUserPreferences();
+        } else {
+            const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
+            applyTheme(savedTheme);
+            document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+        }
+    }, 100);
+    
+    // Save content immediately for non-logged users and restore if available
+    if (!window.currentUser) {
+        // Save current state immediately
+        setTimeout(() => {
+            if (editor) {
+                saveEditorContent();
+            }
+        }, 1000);
+        
+        // Try to restore any existing content
+        restoreEditorContent();
+    }
     
     // Collaboration modal handlers
     document.getElementById('generateRoomId').addEventListener('click', () => {
@@ -330,6 +574,7 @@ function setupUI() {
     });
     
     document.getElementById('endSession').addEventListener('click', endCollaborationSession);
+    document.getElementById('exitSession').addEventListener('click', exitCollaborationSession);
     
     // Chat functionality
     document.getElementById('sendMessage').addEventListener('click', sendChatMessage);
@@ -338,6 +583,17 @@ function setupUI() {
             sendChatMessage();
         }
     });
+    
+    // Video controls
+    setupVideoControls();
+    
+    // Collaboration toggle
+    setupCollaborationToggle();
+    
+    // Initialize video call when collaboration starts (only if user is logged in)
+    if (typeof Peer !== 'undefined' && window.currentUser) {
+        initializeVideoCall();
+    }
     
     // Close dropdown when clicking outside
     document.addEventListener('click', () => {
@@ -357,18 +613,30 @@ function setupUI() {
 
 function setupThemeAndSettings() {
     const themeToggle = document.getElementById('themeToggle');
+    const themeMenu = document.getElementById('themeMenu');
     const settingsBtn = document.getElementById('settingsBtn');
     
-    if (themeToggle) {
-        themeToggle.addEventListener('click', function() {
-            if (!editor) return;
-            const currentTheme = editor.getOption('theme');
-            const newTheme = currentTheme === 'default' ? 'vscode-dark' : 'default';
-            editor.setOption('theme', newTheme);
-            
-            const icon = themeToggle.querySelector('i');
-            icon.className = newTheme === 'default' ? 'fas fa-moon' : 'fas fa-sun';
-            showNotification(`Theme changed to ${newTheme}`);
+    if (themeToggle && themeMenu) {
+        themeToggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            themeMenu.classList.toggle('show');
+        });
+        
+        document.querySelectorAll('.theme-option').forEach(option => {
+            option.addEventListener('click', function() {
+                const theme = this.dataset.theme;
+                applyTheme(theme);
+                
+                document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('active'));
+                this.classList.add('active');
+                
+                themeMenu.classList.remove('show');
+                showNotification(`Theme changed to ${theme}`);
+            });
+        });
+        
+        document.addEventListener('click', function() {
+            themeMenu.classList.remove('show');
         });
     }
     
@@ -376,6 +644,146 @@ function setupThemeAndSettings() {
         settingsBtn.addEventListener('click', function() {
             showNotification('Settings panel coming soon!');
         });
+    }
+}
+
+function setupLayoutControls() {
+    const layoutBtn = document.getElementById('layoutBtn');
+    const layoutMenu = document.getElementById('layoutMenu');
+    
+    if (layoutBtn && layoutMenu) {
+        layoutBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            layoutMenu.classList.toggle('show');
+        });
+        
+        document.querySelectorAll('.layout-option').forEach(option => {
+            option.addEventListener('click', function() {
+                const layout = this.dataset.layout;
+                
+                // Save state for non-logged users before layout change
+                if (!window.currentUser) {
+                    saveEditorContent();
+                }
+                
+                applyLayout(layout);
+                
+                document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
+                this.classList.add('active');
+                
+                layoutMenu.classList.remove('show');
+                showNotification(`Layout changed to ${this.querySelector('span').textContent}`);
+            });
+        });
+        
+        document.addEventListener('click', function() {
+            layoutMenu.classList.remove('show');
+        });
+    }
+}
+
+function applyLayout(layout) {
+    const editorContainer = document.querySelector('.editor-container');
+    const outputSection = document.querySelector('.output-section');
+    const editorSection = document.querySelector('.editor-section');
+    const resizer = document.querySelector('.resizer');
+    const toolbar = document.querySelector('.editor-toolbar');
+    
+    if (!editorContainer || !outputSection || !editorSection) return;
+    
+    // Save layout preference
+    if (window.currentUser && !window.isRestoring && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/layout`).set(layout).catch(e => {
+            console.log('Error saving layout:', e);
+            localStorage.setItem('selectedLayout', layout);
+        });
+    } else if (!window.isRestoring) {
+        localStorage.setItem('selectedLayout', layout);
+    }
+    
+    // Clear all existing styles
+    editorContainer.style.cssText = '';
+    outputSection.style.cssText = '';
+    editorSection.style.flexDirection = '';
+    resizer.style.cssText = '';
+    
+    if (layout.startsWith('v-')) {
+        // Vertical layout
+        let contentWrapper = editorSection.querySelector('.layout-wrapper');
+        if (!contentWrapper) {
+            contentWrapper = document.createElement('div');
+            contentWrapper.className = 'layout-wrapper';
+            contentWrapper.style.cssText = 'display: flex; flex: 1; height: 100%;';
+            
+            editorSection.appendChild(contentWrapper);
+            contentWrapper.appendChild(editorContainer);
+            contentWrapper.appendChild(resizer);
+            contentWrapper.appendChild(outputSection);
+        }
+        
+        resizer.style.cssText = 'width: 4px; height: 100%; cursor: col-resize; background: var(--border-color);';
+        
+        let editorPercent;
+        switch (layout) {
+            case 'v-50-50': editorPercent = 50; break;
+            case 'v-60-40': editorPercent = 60; break;
+            case 'v-40-60': editorPercent = 40; break;
+            case 'v-70-30': editorPercent = 70; break;
+            default: editorPercent = 50;
+        }
+        
+        const outputPercent = 100 - editorPercent;
+        
+        const totalWidth = contentWrapper.offsetWidth || editorSection.offsetWidth;
+        const editorWidth = Math.floor(totalWidth * (editorPercent / 100));
+        const outputWidth = totalWidth - editorWidth - 4;
+        
+        editorContainer.style.cssText = `width: ${editorWidth}px; height: 100%; flex-shrink: 0; overflow: auto; max-width: ${editorWidth}px; box-sizing: border-box;`;
+        outputSection.style.cssText = `width: ${outputWidth}px; height: 100%; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; border-top: none; border-left: 1px solid var(--border-color); max-width: ${outputWidth}px; box-sizing: border-box;`;
+        
+        // Set output panels for vertical layout
+        document.querySelectorAll('.output-panel').forEach(panel => {
+            panel.style.overflowX = 'auto';
+            panel.style.overflowY = 'hidden';
+        });
+    } else {
+        // Horizontal layout
+        const contentWrapper = editorSection.querySelector('.layout-wrapper');
+        if (contentWrapper) {
+            editorSection.insertBefore(editorContainer, contentWrapper);
+            editorSection.insertBefore(resizer, contentWrapper);
+            editorSection.insertBefore(outputSection, contentWrapper);
+            contentWrapper.remove();
+        }
+        
+        editorSection.style.flexDirection = 'column';
+        resizer.style.cssText = 'width: 100%; height: 4px; cursor: row-resize; background: var(--border-color);';
+        
+        let editorPercent;
+        switch (layout) {
+            case '50-50': editorPercent = 50; break;
+            case '60-40': editorPercent = 60; break;
+            case '70-30': editorPercent = 70; break;
+            case '40-60': editorPercent = 40; break;
+            case '80-20': editorPercent = 80; break;
+            case '25-75': editorPercent = 25; break;
+            default: editorPercent = 50;
+        }
+        
+        const outputPercent = 100 - editorPercent;
+        
+        editorContainer.style.cssText = `height: ${editorPercent}%; flex-shrink: 0; overflow: auto; max-height: ${editorPercent}%; box-sizing: border-box;`;
+        outputSection.style.cssText = `height: ${outputPercent}%; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; max-height: ${outputPercent}%; box-sizing: border-box;`;
+        
+        // Set output panels for horizontal layout
+        document.querySelectorAll('.output-panel').forEach(panel => {
+            panel.style.overflowX = 'hidden';
+            panel.style.overflowY = 'auto';
+        });
+    }
+    
+    if (editor && editor.refresh) {
+        setTimeout(() => editor.refresh(), 100);
     }
 }
 
@@ -392,6 +800,13 @@ function setupResizer() {
         isResizing = true;
         document.body.style.cursor = 'row-resize';
         document.body.style.userSelect = 'none';
+        
+        const overlay = document.createElement('div');
+        overlay.id = 'resizeOverlay';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(2px); z-index: 999;';
+        document.body.appendChild(overlay);
+        
+        resizer.classList.add('active');
         e.preventDefault();
     });
     
@@ -400,33 +815,37 @@ function setupResizer() {
         
         const containerRect = document.querySelector('.editor-section').getBoundingClientRect();
         const toolbarHeight = document.querySelector('.editor-toolbar').offsetHeight;
-        const mouseY = e.clientY - containerRect.top - toolbarHeight;
+        const isVerticalLayout = resizer.style.cursor === 'col-resize';
         
-        const minEditorHeight = 200;
-        const minOutputHeight = 100;
-        const maxEditorHeight = containerRect.height - toolbarHeight - minOutputHeight - 4;
-        
-        const newEditorHeight = Math.max(minEditorHeight, Math.min(maxEditorHeight, mouseY));
-        const newOutputHeight = containerRect.height - toolbarHeight - newEditorHeight - 4;
-        
-        editorContainer.style.height = newEditorHeight + 'px';
-        editorContainer.style.flexShrink = '0';
-        outputSection.style.height = newOutputHeight + 'px';
-        outputSection.style.flexShrink = '0';
-        
-        // Refresh CodeMirror if it exists
-        if (editor && editor.refresh) {
-            setTimeout(() => editor.refresh(), 0);
+        if (isVerticalLayout) {
+            const mouseX = e.clientX - containerRect.left;
+            const minEditorWidth = 200;
+            const minOutputWidth = 200;
+            const maxEditorWidth = containerRect.width - minOutputWidth - 4;
+            
+            const newEditorWidth = Math.max(minEditorWidth, Math.min(maxEditorWidth, mouseX));
+            const newOutputWidth = containerRect.width - newEditorWidth - 4;
+            
+            editorContainer.style.cssText = `width: ${newEditorWidth}px; height: 100%; flex-shrink: 0; overflow: auto; max-width: ${newEditorWidth}px; box-sizing: border-box;`;
+            outputSection.style.cssText = `width: ${newOutputWidth}px; height: 100%; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; border-top: none; border-left: 1px solid var(--border-color); max-width: ${newOutputWidth}px; box-sizing: border-box;`;
+        } else {
+            const mouseY = e.clientY - containerRect.top - toolbarHeight;
+            const minEditorHeight = 200;
+            const minOutputHeight = 100;
+            const maxEditorHeight = containerRect.height - toolbarHeight - minOutputHeight - 4;
+            
+            const newEditorHeight = Math.max(minEditorHeight, Math.min(maxEditorHeight, mouseY));
+            const newOutputHeight = containerRect.height - toolbarHeight - newEditorHeight - 4;
+            
+            editorContainer.style.cssText = `height: ${newEditorHeight}px; flex-shrink: 0; overflow: auto; max-height: ${newEditorHeight}px; box-sizing: border-box;`;
+            outputSection.style.cssText = `height: ${newOutputHeight}px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; max-height: ${newOutputHeight}px; box-sizing: border-box;`;
         }
         
-        // Add click handler for edit requests in restricted mode
-        if (editor) {
-            editor.on('focus', () => {
-                if (currentEditMode === 'restricted' && !isHost && currentEditor !== window.currentUser?.uid) {
-                    requestEdit();
-                    editor.getInputField().blur();
-                }
-            });
+        editorContainer.style.flexShrink = '0';
+        outputSection.style.flexShrink = '0';
+        
+        if (editor && editor.refresh) {
+            setTimeout(() => editor.refresh(), 0);
         }
     });
     
@@ -435,6 +854,11 @@ function setupResizer() {
             isResizing = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            
+            const overlay = document.getElementById('resizeOverlay');
+            if (overlay) overlay.remove();
+            
+            resizer.classList.remove('active');
         }
     });
 }
@@ -443,18 +867,40 @@ function executeCode() {
     const code = editor && editor.getValue ? editor.getValue() : document.getElementById('fallback-editor')?.value || '';
     const language = document.getElementById('languageSelect').value;
     
-    console.log('Execute code called for language:', language);
+    console.log('=== EXECUTE CODE DEBUG ===');
+    console.log('Language:', language);
+    console.log('Code:', code);
     console.log('Socket connected:', window.socket && window.socket.connected);
     console.log('Current room:', window.currentRoom);
     
     // Try server execution if connected
-    if (window.socket && window.socket.connected && window.currentRoom) {
+    if (window.socket && window.socket.connected) {
         console.log('Sending to server for execution');
+        const roomId = window.currentRoom || 'solo-' + Date.now();
+        
+        // Set flag to track if server responded
+        window.executionId = Date.now();
+        const currentExecutionId = window.executionId;
+        
         window.socket.emit('execute-code', {
-            roomId: window.currentRoom,
+            roomId: roomId,
             code,
-            language
+            language,
+            executionId: currentExecutionId
         });
+        
+        // Fallback after 3 seconds if no server response
+        setTimeout(() => {
+            if (window.executionId === currentExecutionId) {
+                console.log('No server response, running locally');
+                runCodeLocally(code, language);
+            }
+        }, 3000);
+        
+        // Show HTML preview immediately for better UX
+        if (language === 'html') {
+            showPreview(code);
+        }
         return;
     }
     
@@ -681,20 +1127,28 @@ function startCollaboration() {
     currentEditMode = mode;
     window.currentRoom = roomId;
     
+    // Save collaboration session to Firebase
+    saveCollaborationSession(roomId, mode, true);
+    
     // Update UI to show collaborating state
     document.getElementById('collaborateBtn').style.display = 'none';
-    document.getElementById('collaboratingLabel').style.display = 'block';
+    document.getElementById('collaboratingLabel').style.display = 'inline-block';
     
     // Update dropdown info
     document.getElementById('dropdownRoomId').textContent = roomId;
     document.getElementById('dropdownMode').textContent = mode;
     document.getElementById('dropdownShareLink').value = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
     
-    // Show collaboration UI
-    document.querySelector('.container').classList.add('collaboration-mode');
-    document.getElementById('rightPanel').style.display = 'block';
+    // Show collaboration toggle button (panel hidden by default)
+    const toggleBtn = document.getElementById('collaborationToggle');
+    toggleBtn.style.display = 'flex';
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    toggleBtn.classList.remove('panel-open');
     document.getElementById('roomStatus').textContent = `Host - ${roomId}`;
     document.getElementById('roomStatus').className = 'status-indicator connected';
+    
+    // Update editor permissions to show host controls
+    setTimeout(() => updateEditorPermissions(), 100);
     
     // Join room
     if (window.socket && window.socket.connected) {
@@ -724,29 +1178,80 @@ function toggleEditMode() {
     if (!isHost) return;
     
     currentEditMode = currentEditMode === 'freestyle' ? 'restricted' : 'freestyle';
-    const btn = document.getElementById('editModeBtn');
-    btn.textContent = currentEditMode === 'freestyle' ? 'Restricted Mode' : 'Freestyle Mode';
+    
+    // In restricted mode, host gets initial edit rights
+    if (currentEditMode === 'restricted') {
+        currentEditor = window.currentUser.uid;
+    } else {
+        // Clear remote cursors when switching to freestyle mode
+        clearRemoteCursors();
+        currentEditor = null;
+    }
     
     // Broadcast mode change
     if (window.socket && window.currentRoom) {
         window.socket.emit('edit-mode-change', {
             roomId: window.currentRoom,
-            mode: currentEditMode
+            mode: currentEditMode,
+            currentEditor: currentEditor
         });
     }
     
     updateEditorPermissions();
+    showNotification(`Mode changed to ${currentEditMode}`);
 }
 
 function updateEditorPermissions() {
     if (!editor) return;
     
-    if (currentEditMode === 'freestyle' || isHost || currentEditor === window.currentUser?.uid) {
+    const editModeBtn = document.getElementById('editModeBtn');
+    const currentEditorSpan = document.getElementById('currentEditor');
+    const endSessionBtn = document.getElementById('endSession');
+    const exitSessionBtn = document.getElementById('exitSession');
+    
+    console.log('Updating permissions - isHost:', isHost, 'isCollaborating:', isCollaborating, 'currentEditMode:', currentEditMode);
+    
+    // Show/hide controls based on host status and current panel
+    if (isHost && isCollaborating) {
+        if (editModeBtn) {
+            editModeBtn.style.display = 'block';
+            editModeBtn.textContent = currentEditMode === 'freestyle' ? 'Switch to Restricted' : 'Switch to Freestyle';
+        }
+        // Show end session button only when users panel is active
+        const usersPanel = document.getElementById('users-panel');
+        if (endSessionBtn && usersPanel && usersPanel.classList.contains('active')) {
+            endSessionBtn.style.display = 'inline-block';
+            console.log('Showing end session button for host in users panel');
+        } else if (endSessionBtn) {
+            endSessionBtn.style.display = 'none';
+        }
+        if (exitSessionBtn) exitSessionBtn.style.display = 'none';
+    } else if (isCollaborating) {
+        if (editModeBtn) editModeBtn.style.display = 'none';
+        if (endSessionBtn) endSessionBtn.style.display = 'none';
+        // Show exit session button only when users panel is active
+        const usersPanel = document.getElementById('users-panel');
+        if (exitSessionBtn && usersPanel && usersPanel.classList.contains('active')) {
+            exitSessionBtn.style.display = 'inline-block';
+            console.log('Showing exit session button for participant in users panel');
+        } else if (exitSessionBtn) {
+            exitSessionBtn.style.display = 'none';
+        }
+    }
+    
+    if (currentEditMode === 'freestyle') {
         editor.setOption('readOnly', false);
-        document.getElementById('currentEditor').textContent = 'You are editing';
-    } else {
-        editor.setOption('readOnly', true);
-        document.getElementById('currentEditor').textContent = currentEditor ? 'Someone else is editing' : 'Request to edit';
+        if (currentEditorSpan) currentEditorSpan.textContent = 'Freestyle Mode - All can edit';
+    } else if (currentEditMode === 'restricted') {
+        if (currentEditor && currentEditor === window.currentUser?.uid) {
+            editor.setOption('readOnly', false);
+            if (currentEditorSpan) currentEditorSpan.textContent = 'You are editing';
+        } else {
+            editor.setOption('readOnly', true);
+            if (currentEditorSpan) {
+                currentEditorSpan.innerHTML = `<button onclick="requestEdit()" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Request Edit</button>`;
+            }
+        }
     }
 }
 
@@ -755,11 +1260,58 @@ function requestEdit() {
     
     window.socket.emit('edit-request', {
         roomId: window.currentRoom,
-        user: window.currentUser
+        user: {
+            uid: window.currentUser.uid,
+            displayName: window.currentUser.displayName,
+            email: window.currentUser.email
+        }
     });
     
     showNotification('Edit request sent!');
 }
+
+window.requestEdit = requestEdit;
+
+// Debug function to test button display
+window.testRequestButton = function() {
+    const currentEditorSpan = document.getElementById('currentEditor');
+    if (currentEditorSpan) {
+        currentEditorSpan.innerHTML = `<button onclick="requestEdit()" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Request Edit</button>`;
+        console.log('Test button added successfully');
+    } else {
+        console.log('currentEditor element not found');
+    }
+};
+
+// Debug function to check connection status
+window.checkConnection = function() {
+    console.log('=== Connection Status Debug ===');
+    console.log('Socket exists:', !!window.socket);
+    console.log('Socket connected:', window.socket?.connected);
+    console.log('Socket disconnected:', window.socket?.disconnected);
+    console.log('Socket id:', window.socket?.id);
+    console.log('Current room:', window.currentRoom);
+    console.log('Is collaborating:', isCollaborating);
+    console.log('Status element text:', document.getElementById('roomStatus')?.textContent);
+    
+    if (window.socket && window.socket.connected) {
+        console.log('✅ Socket should be connected - forcing status update');
+        updateStatus('connected');
+    } else {
+        console.log('❌ Socket not connected');
+    }
+};
+
+// Force reconnect function
+window.forceReconnect = function() {
+    console.log('Forcing reconnection...');
+    if (window.socket) {
+        window.socket.disconnect();
+    }
+    setTimeout(() => {
+        tryServerConnection();
+    }, 500);
+};
 
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -781,11 +1333,28 @@ function switchPanel(panelName) {
     
     if (panelBtn) panelBtn.classList.add('active');
     if (panel) panel.classList.add('active');
+    
+    // Update editor permissions when switching panels
+    if (isCollaborating) {
+        if (panelName === 'users') {
+            setTimeout(() => updateEditorPermissions(), 100);
+        } else {
+            // Hide session buttons when not in users panel
+            const endSessionBtn = document.getElementById('endSession');
+            const exitSessionBtn = document.getElementById('exitSession');
+            if (endSessionBtn) endSessionBtn.style.display = 'none';
+            if (exitSessionBtn) exitSessionBtn.style.display = 'none';
+        }
+    }
 }
 
 function displayOutput(output, error) {
+    console.log('displayOutput called:', { output, error });
     const consolePanel = document.getElementById('console');
-    if (!consolePanel) return;
+    if (!consolePanel) {
+        console.log('Console panel not found!');
+        return;
+    }
     
     const timestamp = new Date().toLocaleTimeString();
     
@@ -797,11 +1366,16 @@ function displayOutput(output, error) {
     
     consolePanel.scrollTop = consolePanel.scrollHeight;
     switchTab('console');
+    console.log('Output displayed in console');
 }
 
 function displayOutputInTerminal(output, error) {
+    console.log('displayOutputInTerminal called:', { output, error });
     const terminalPanel = document.getElementById('terminal');
-    if (!terminalPanel) return;
+    if (!terminalPanel) {
+        console.log('Terminal panel not found!');
+        return;
+    }
     
     const timestamp = new Date().toLocaleTimeString();
     
@@ -813,6 +1387,7 @@ function displayOutputInTerminal(output, error) {
     
     terminalPanel.scrollTop = terminalPanel.scrollHeight;
     switchTab('terminal');
+    console.log('Output displayed in terminal');
 }
 
 function displayRealTimeOutput(text, type) {
@@ -857,8 +1432,14 @@ function clearTerminal() {
 
 function showEditRequest(user) {
     const chatMessages = document.getElementById('chatMessages');
+    
+    // Check if request already exists
+    const existingRequest = chatMessages.querySelector(`[data-user-id="${user.uid}"]`);
+    if (existingRequest) return;
+    
     const requestDiv = document.createElement('div');
     requestDiv.className = 'edit-request';
+    requestDiv.setAttribute('data-user-id', user.uid);
     requestDiv.innerHTML = `
         <div><strong>${user.displayName}</strong> requests to edit</div>
         <div class="request-actions">
@@ -873,8 +1454,19 @@ function showEditRequest(user) {
 
 window.approveEditRequest = function(userId, userName) {
     // Reject all other pending requests
-    document.querySelectorAll('.edit-request').forEach(req => req.remove());
+    const allRequests = document.querySelectorAll('.edit-request');
+    allRequests.forEach(req => {
+        const reqUserId = req.getAttribute('data-user-id');
+        if (reqUserId !== userId && window.socket && window.currentRoom) {
+            window.socket.emit('edit-rejected', {
+                roomId: window.currentRoom,
+                userId: reqUserId
+            });
+        }
+        req.remove();
+    });
     
+    // Transfer editor rights (even host loses rights)
     currentEditor = userId;
     updateEditorPermissions();
     
@@ -896,7 +1488,8 @@ window.approveEditRequest = function(userId, userName) {
 };
 
 window.rejectEditRequest = function(userId) {
-    document.querySelectorAll('.edit-request').forEach(req => req.remove());
+    const requestToRemove = document.querySelector(`[data-user-id="${userId}"]`);
+    if (requestToRemove) requestToRemove.remove();
     
     if (window.socket && window.currentRoom) {
         window.socket.emit('edit-rejected', {
@@ -959,12 +1552,14 @@ function updateStatus(status) {
     const statusElement = document.getElementById('roomStatus');
     if (statusElement) {
         const statusText = {
+            'connecting': 'Connecting...',
             'connected': 'Connected',
-            'disconnected': 'Disconnected',
-            'offline': 'Offline Mode'
+            'disconnected': 'Disconnected', 
+            'offline': 'Solo Mode'
         };
         statusElement.textContent = statusText[status] || 'Unknown';
         statusElement.className = `status-indicator ${status}`;
+        console.log('📊 Status updated to:', statusText[status]);
     }
 }
 
@@ -988,6 +1583,7 @@ function runCodeLocally(code, language) {
                     console.log = originalLog;
                 }
                 break;
+                break;
                 
             case 'html':
                 showPreview(code);
@@ -999,7 +1595,16 @@ function runCodeLocally(code, language) {
                 break;
                 
             case 'python':
-                displayOutput('', 'Python requires server connection. Please check if server is running.');
+                displayOutputInTerminal('', 'Python requires server connection with Python interpreter installed.');
+                break;
+            case 'java':
+                displayOutputInTerminal('', 'Java: JDK detected but server needs Java execution handler. Check server logs.');
+                break;
+            case 'c':
+                displayOutputInTerminal('', 'C: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH');
+                break;
+            case 'cpp':
+                displayOutputInTerminal('', 'C++: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH');
                 break;
                 
             default:
@@ -1010,66 +1615,517 @@ function runCodeLocally(code, language) {
     }
 }
 
-function showNotification(message) {
+function showNotification(message, type = 'success') {
     const notification = document.createElement('div');
-    notification.className = 'notification fade-in';
+    notification.className = `notification ${type}`;
     notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #4CAF50;
-        color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        z-index: 1000;
-    `;
     
     document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 3000);
+    
+    // Slide in animation
+    setTimeout(() => {
+        notification.style.transform = 'translateX(-50%) translateY(0)';
+    }, 50);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.transform = 'translateX(-50%) translateY(-100px)';
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+let isLivePreviewEnabled = false;
+let previewWindow = null;
+
+function updateLivePreviewVisibility(language) {
+    const btn = document.getElementById('livePreview');
+    const runBtn = document.getElementById('runCode');
+    
+    if (language === 'html') {
+        btn.style.display = 'flex';
+        if (isLivePreviewEnabled) {
+            updateLivePreview();
+        }
+    } else {
+        btn.style.display = 'none';
+        if (isLivePreviewEnabled) {
+            btn.classList.remove('active');
+            runBtn.disabled = false;
+            isLivePreviewEnabled = false;
+            if (editor) {
+                editor.off('change', updateLivePreview);
+            }
+        }
+    }
+}
+
+function toggleLivePreview() {
+    const btn = document.getElementById('livePreview');
+    const runBtn = document.getElementById('runCode');
+    const language = document.getElementById('languageSelect').value;
+    
+    if (language !== 'html') return;
+    
+    isLivePreviewEnabled = !isLivePreviewEnabled;
+    
+    if (isLivePreviewEnabled) {
+        btn.classList.add('active');
+        runBtn.disabled = true;
+        showNotification('Live Preview enabled');
+        
+        if (editor) {
+            editor.on('change', updateLivePreview);
+        }
+        updateLivePreview();
+    } else {
+        btn.classList.remove('active');
+        runBtn.disabled = false;
+        showNotification('Live Preview disabled');
+        
+        if (editor) {
+            editor.off('change', updateLivePreview);
+        }
+    }
+}
+
+function updateLivePreview() {
+    if (!isLivePreviewEnabled) return;
+    
+    const language = document.getElementById('languageSelect').value;
+    if (language === 'html') {
+        const code = editor ? editor.getValue() : '';
+        showPreview(code);
+        switchTab('preview');
+        
+        // Update new window if open
+        if (previewWindow && !previewWindow.closed) {
+            previewWindow.document.open();
+            previewWindow.document.write(code);
+            previewWindow.document.close();
+        }
+    }
+}
+
+function openPreviewInNewWindow() {
+    const code = editor ? editor.getValue() : '';
+    const language = document.getElementById('languageSelect').value;
+    
+    if (language === 'html' && code.trim()) {
+        previewWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+        previewWindow.document.write(code);
+        previewWindow.document.close();
+        
+        previewWindow.addEventListener('beforeunload', () => {
+            previewWindow = null;
+        });
+        
+        showNotification('Preview opened in new window');
+    } else {
+        showNotification('Please write HTML code to preview');
+    }
+}
+
+let pendingLanguageSwitch = null;
+
+function getDefaultCode(language) {
+    const defaults = {
+        javascript: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\nconsole.log("Hello, World!");',
+        python: '# Welcome to CodeNexus Pro!\n# Start coding here...\n\nprint("Hello, World!")',
+        html: '<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>',
+        css: '/* Welcome to CodeNexus Pro! */\n/* Start styling here... */\n\nbody {\n    font-family: Arial, sans-serif;\n}',
+        java: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
+        c: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
+        cpp: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}'
+    };
+    return defaults[language] || defaults.javascript;
+}
+
+function showLanguageSwitchModal(newLanguage) {
+    pendingLanguageSwitch = newLanguage;
+    const saveBtn = document.getElementById('saveBeforeSwitch');
+    
+    if (window.currentUser) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+        saveBtn.onclick = saveBeforeLanguageSwitch;
+    } else {
+        saveBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login to Save';
+        saveBtn.onclick = () => showNotification('Please login first to save your code!');
+    }
+    
+    document.getElementById('languageSwitchModal').style.display = 'block';
+}
+
+function saveBeforeLanguageSwitch() {
+    if (!window.currentUser) {
+        showNotification('Please login first to save your code!');
+        return;
+    }
+    
+    document.getElementById('languageSwitchModal').style.display = 'none';
+    document.getElementById('saveCodeModal').style.display = 'block';
+    document.getElementById('fileNameInput').focus();
+    
+    const originalConfirmSave = document.getElementById('confirmSave').onclick;
+    document.getElementById('confirmSave').onclick = () => {
+        const fileName = document.getElementById('fileNameInput').value;
+        if (fileName.trim()) {
+            saveCodeWithName(fileName);
+            switchLanguage(pendingLanguageSwitch);
+        }
+    };
+}
+
+function trashAndSwitch() {
+    document.getElementById('languageSwitchModal').style.display = 'none';
+    switchLanguage(pendingLanguageSwitch);
+}
+
+function switchLanguage(newLanguage) {
+    const languageSelect = document.getElementById('languageSelect');
+    languageSelect.value = newLanguage;
+    languageSelect.dataset.previousValue = newLanguage;
+    
+    const mode = window.getCodeMirrorMode(newLanguage);
+    if (editor && editor.setOption) {
+        editor.setOption('mode', mode);
+        editor.setValue(getDefaultCode(newLanguage));
+    }
+    updateLivePreviewVisibility(newLanguage);
+}
+
+function saveEditorContent() {
+    if (editor) {
+        const content = {
+            code: editor.getValue(),
+            language: document.getElementById('languageSelect').value,
+            layout: getCurrentLayout()
+        };
+        sessionStorage.setItem('tempEditorContent', JSON.stringify(content));
+        console.log('Content saved:', content);
+    }
+}
+
+function restoreEditorContent() {
+    const saved = sessionStorage.getItem('tempEditorContent');
+    console.log('Attempting to restore, saved data:', saved);
+    
+    if (saved && editor) {
+        try {
+            const content = JSON.parse(saved);
+            console.log('Parsed content:', content);
+            
+            if (content.code || content.language || content.layout) {
+                window.isRestoring = true;
+                
+                // Restore language first
+                if (content.language && content.language !== 'javascript') {
+                    const languageSelect = document.getElementById('languageSelect');
+                    languageSelect.value = content.language;
+                    languageSelect.dataset.previousValue = content.language;
+                    
+                    const mode = window.getCodeMirrorMode(content.language);
+                    editor.setOption('mode', mode);
+                    updateLivePreviewVisibility(content.language);
+                }
+                
+                // Restore content
+                if (content.code && content.code.trim() !== '') {
+                    editor.setValue(content.code);
+                    editor.refresh();
+                }
+                
+                // Restore layout
+                if (content.layout) {
+                    setTimeout(() => {
+                        applyLayout(content.layout);
+                        document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
+                        const activeOption = document.querySelector(`[data-layout="${content.layout}"]`);
+                        if (activeOption) activeOption.classList.add('active');
+                    }, 100);
+                }
+                
+                setTimeout(() => {
+                    window.isRestoring = false;
+                    sessionStorage.removeItem('tempEditorContent');
+                    showNotification('Previous work restored!');
+                }, 200);
+            }
+        } catch (e) {
+            console.log('Error restoring editor content:', e);
+        }
+    } else {
+        console.log('No saved content found or editor not ready');
+    }
 }
 
 // Profile modal removed - using Firebase auth
 
 function joinCollaborationRoom(roomId) {
+    console.log('Attempting to join room:', roomId, 'User:', window.currentUser);
+    
+    // Allow guest users to join collaboration
     if (!window.currentUser) {
-        showNotification('Please login to join collaboration!');
-        return;
+        window.currentUser = {
+            uid: 'guest-' + Date.now(),
+            displayName: 'Guest User',
+            email: 'guest@example.com',
+            photoURL: 'https://via.placeholder.com/40/666/ffffff?text=G'
+        };
+        console.log('Created guest user for collaboration:', window.currentUser);
     }
     
     isCollaborating = true;
     isHost = false;
     window.currentRoom = roomId;
     
+    // Save collaboration session to Firebase (only for logged users)
+    if (window.currentUser && !window.currentUser.uid.startsWith('guest-')) {
+        saveCollaborationSession(roomId, 'joined', false);
+    }
+    
     // Update UI to show collaborating state
     document.getElementById('collaborateBtn').style.display = 'none';
-    document.getElementById('collaboratingLabel').style.display = 'block';
+    document.getElementById('collaboratingLabel').style.display = 'inline-block';
     
     // Update dropdown info
     document.getElementById('dropdownRoomId').textContent = roomId;
     document.getElementById('dropdownMode').textContent = 'Joined Session';
     document.getElementById('dropdownShareLink').value = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
     
-    // Show collaboration UI
-    document.querySelector('.container').classList.add('collaboration-mode');
-    document.getElementById('rightPanel').style.display = 'block';
+    // Show collaboration toggle button (panel hidden by default)
+    const toggleBtn = document.getElementById('collaborationToggle');
+    toggleBtn.style.display = 'flex';
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    toggleBtn.classList.remove('panel-open');
     document.getElementById('roomStatus').textContent = `Joined - ${roomId}`;
     document.getElementById('roomStatus').className = 'status-indicator connected';
+    
+    // Update editor permissions to show participant controls
+    updateEditorPermissions();
     
     // Join room when socket connects
     if (window.socket && window.socket.connected) {
         window.socket.emit('join-room', {
             roomId,
             user: {
-                ...window.currentUser,
+                uid: window.currentUser.uid,
                 username: window.currentUser.displayName,
                 profilePic: window.currentUser.photoURL,
                 isHost: false
             }
         });
+    } else {
+        // If socket not connected, try to connect and then join
+        console.log('Socket not connected, attempting to connect first');
+        setTimeout(() => {
+            if (window.socket && window.socket.connected) {
+                window.socket.emit('join-room', {
+                    roomId,
+                    user: {
+                        uid: window.currentUser.uid,
+                        username: window.currentUser.displayName,
+                        profilePic: window.currentUser.photoURL,
+                        isHost: false
+                    }
+                });
+            }
+        }, 1000);
     }
     
     showNotification('Joined collaboration session!');
+}
+
+// Firebase collaboration persistence functions
+function saveCollaborationSession(roomId, mode, isHost) {
+    if (!window.currentUser) return;
+    database.ref(`users/${window.currentUser.uid}/collaboration`).set({
+        roomId: roomId,
+        mode: mode,
+        isHost: isHost,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+function clearCollaborationSession() {
+    if (!window.currentUser) return;
+    database.ref(`users/${window.currentUser.uid}/collaboration`).remove();
+}
+
+function loadCollaborationSession() {
+    if (!window.currentUser) return;
+    database.ref(`users/${window.currentUser.uid}/collaboration`).once('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.roomId) {
+            if (data.isHost) {
+                isCollaborating = true;
+                isHost = true;
+                currentEditMode = data.mode;
+                window.currentRoom = data.roomId;
+                
+                document.getElementById('collaborateBtn').style.display = 'none';
+                document.getElementById('collaboratingLabel').style.display = 'inline-block';
+                document.getElementById('dropdownRoomId').textContent = data.roomId;
+                document.getElementById('dropdownMode').textContent = data.mode;
+                document.getElementById('dropdownShareLink').value = `${window.location.origin}${window.location.pathname}?room=${data.roomId}`;
+                
+                const toggleBtn = document.getElementById('collaborationToggle');
+                toggleBtn.style.display = 'flex';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                toggleBtn.classList.remove('panel-open');
+                document.getElementById('roomStatus').textContent = `Host - ${data.roomId}`;
+                document.getElementById('roomStatus').className = 'status-indicator connected';
+                
+                if (window.socket && window.socket.connected) {
+                    window.socket.emit('join-room', {
+                        roomId: data.roomId,
+                        user: {
+                            ...window.currentUser,
+                            username: window.currentUser.displayName,
+                            profilePic: window.currentUser.photoURL,
+                            isHost: true
+                        }
+                    });
+                }
+            } else {
+                joinCollaborationRoom(data.roomId);
+            }
+        }
+    });
+}
+
+// Remote cursor management
+let remoteCursors = new Map();
+
+function showRemoteCursor(data) {
+    if (!editor || currentEditMode !== 'freestyle') return;
+    
+    const userId = data.userId;
+    const userName = data.userName;
+    const pos = { line: data.line, ch: data.ch };
+    
+    // Remove existing cursor
+    if (remoteCursors.has(userId)) {
+        const oldCursor = remoteCursors.get(userId);
+        if (oldCursor.marker) oldCursor.marker.clear();
+        if (oldCursor.widget) oldCursor.widget.clear();
+    }
+    
+    // Create cursor marker
+    const cursorElement = document.createElement('span');
+    cursorElement.className = 'remote-cursor';
+    cursorElement.style.cssText = `
+        position: absolute;
+        width: 2px;
+        height: 1.2em;
+        background: ${getUserColor(userId)};
+        z-index: 100;
+        pointer-events: none;
+    `;
+    
+    // Create name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'cursor-label';
+    nameLabel.textContent = userName;
+    nameLabel.style.cssText = `
+        position: absolute;
+        top: -20px;
+        left: 0;
+        background: ${getUserColor(userId)};
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 101;
+    `;
+    cursorElement.appendChild(nameLabel);
+    
+    const marker = editor.setBookmark(pos, { widget: cursorElement });
+    
+    remoteCursors.set(userId, { marker, widget: marker });
+    
+    // Auto-hide after 3 seconds of inactivity
+    setTimeout(() => {
+        if (remoteCursors.has(userId)) {
+            const cursor = remoteCursors.get(userId);
+            if (cursor.marker) cursor.marker.clear();
+            remoteCursors.delete(userId);
+        }
+    }, 3000);
+}
+
+function clearRemoteCursors() {
+    remoteCursors.forEach(cursor => {
+        if (cursor.marker) cursor.marker.clear();
+    });
+    remoteCursors.clear();
+}
+
+function getUserColor(userId) {
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
+    const hash = userId.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+    }, 0);
+    return colors[Math.abs(hash) % colors.length];
+}
+
+function getCurrentLayout() {
+    const editorContainer = document.querySelector('.editor-container');
+    const outputSection = document.querySelector('.output-section');
+    const resizer = document.querySelector('.resizer');
+    
+    if (!editorContainer || !outputSection) return '50-50';
+    
+    const isVertical = resizer.style.cursor === 'col-resize';
+    
+    if (isVertical) {
+        const editorWidth = editorContainer.offsetWidth;
+        const totalWidth = editorContainer.parentElement.offsetWidth;
+        const percentage = Math.round((editorWidth / totalWidth) * 100);
+        
+        if (percentage >= 68) return 'v-70-30';
+        if (percentage >= 58) return 'v-60-40';
+        if (percentage >= 48) return 'v-50-50';
+        return 'v-40-60';
+    } else {
+        const editorHeight = editorContainer.offsetHeight;
+        const totalHeight = editorContainer.parentElement.offsetHeight - document.querySelector('.editor-toolbar').offsetHeight;
+        const percentage = Math.round((editorHeight / totalHeight) * 100);
+        
+        if (percentage >= 78) return '80-20';
+        if (percentage >= 68) return '70-30';
+        if (percentage >= 58) return '60-40';
+        if (percentage >= 48) return '50-50';
+        if (percentage >= 38) return '40-60';
+        return '25-75';
+    }
+}
+
+function applyTheme(theme) {
+    document.body.setAttribute('data-theme', theme);
+    
+    if (editor) {
+        const editorThemes = {
+            dark: 'vscode-dark',
+            light: 'default',
+            blue: 'material',
+            green: 'monokai'
+        };
+        editor.setOption('theme', editorThemes[theme] || 'vscode-dark');
+    }
+    
+    // Save theme preference
+    if (window.currentUser && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/theme`).set(theme).catch(e => {
+            console.log('Error saving theme:', e);
+            localStorage.setItem('selectedTheme', theme);
+        });
+    } else {
+        localStorage.setItem('selectedTheme', theme);
+    }
 }
 
 // Utility functions
@@ -1107,11 +2163,16 @@ function sendChatMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     
-    if (!message || !window.socket || !window.currentRoom) return;
+    if (!message || !window.socket || !window.currentRoom || !window.currentUser) return;
     
     window.socket.emit('chat-message', {
         roomId: window.currentRoom,
-        message: message
+        message: message,
+        user: {
+            uid: window.currentUser.uid,
+            username: window.currentUser.displayName,
+            profilePic: window.currentUser.photoURL
+        }
     });
     
     input.value = '';
@@ -1140,23 +2201,294 @@ function displayChatMessage(data) {
     }
 }
 
+function updateUserList(users) {
+    const userList = document.getElementById('userList');
+    const userCount = document.getElementById('userCount');
+    
+    userList.innerHTML = '';
+    userCount.textContent = users.length;
+    
+    users.forEach(user => {
+        const userItem = document.createElement('div');
+        userItem.className = 'user-item';
+        
+        userItem.innerHTML = `
+            <img src="${user.profilePic}" alt="${user.username}" class="user-avatar">
+            <div class="user-info">
+                <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
+                <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
+            </div>
+        `;
+        
+        userList.appendChild(userItem);
+    });
+}
+
+function loadUserPreferences() {
+    if (!window.currentUser || typeof database === 'undefined') {
+        // Fallback to localStorage for non-logged users
+        const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
+        applyTheme(savedTheme);
+        document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+        return;
+    }
+    
+    database.ref(`users/${window.currentUser.uid}/preferences`).once('value', (snapshot) => {
+        const prefs = snapshot.val();
+        console.log('Loaded preferences:', prefs);
+        
+        if (prefs) {
+            // Apply saved theme
+            if (prefs.theme) {
+                document.body.setAttribute('data-theme', prefs.theme);
+                if (editor) {
+                    const editorThemes = {
+                        dark: 'vscode-dark',
+                        light: 'default',
+                        blue: 'material',
+                        green: 'monokai'
+                    };
+                    editor.setOption('theme', editorThemes[prefs.theme] || 'vscode-dark');
+                }
+                document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('active'));
+                document.querySelector(`[data-theme="${prefs.theme}"]`)?.classList.add('active');
+            }
+            
+            // Apply saved layout
+            if (prefs.layout) {
+                setTimeout(() => {
+                    applyLayout(prefs.layout);
+                    document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
+                    document.querySelector(`[data-layout="${prefs.layout}"]`)?.classList.add('active');
+                }, 300);
+            }
+        } else {
+            // No preferences saved, apply defaults
+            const defaultTheme = 'dark';
+            applyTheme(defaultTheme);
+            document.querySelector(`[data-theme="${defaultTheme}"]`)?.classList.add('active');
+        }
+    }).catch(e => {
+        console.log('Error loading preferences:', e);
+        // Fallback to localStorage
+        const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
+        applyTheme(savedTheme);
+        document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+    });
+}
+
 function endCollaborationSession() {
     if (confirm('Are you sure you want to end the collaboration session?')) {
         isCollaborating = false;
         isHost = false;
-        window.currentRoom = null;
+        window.currentRoom = 'solo-' + Date.now();
+        
+        // Clear collaboration session from Firebase
+        clearCollaborationSession();
         
         // Reset UI
-        document.getElementById('collaborateBtn').style.display = 'block';
+        document.getElementById('collaborateBtn').style.display = 'inline-block';
         document.getElementById('collaboratingLabel').style.display = 'none';
         document.querySelector('.container').classList.remove('collaboration-mode');
         document.getElementById('rightPanel').style.display = 'none';
-        document.getElementById('roomStatus').textContent = 'Solo Mode';
-        document.getElementById('roomStatus').className = 'status-indicator';
+        document.getElementById('collaborationToggle').style.display = 'none';
         
-        // Clear chat
+        // Keep the current connection status
+        if (window.socket && window.socket.connected) {
+            updateStatus('connected');
+        } else {
+            updateStatus('offline');
+        }
+        
+        // Clear chat and cursors
         document.getElementById('chatMessages').innerHTML = '';
+        clearRemoteCursors();
         
         showNotification('Collaboration session ended');
+    }
+}
+
+function exitCollaborationSession() {
+    if (confirm('Are you sure you want to exit the collaboration session?')) {
+        isCollaborating = false;
+        isHost = false;
+        window.currentRoom = 'solo-' + Date.now();
+        
+        // Clear collaboration session from Firebase
+        clearCollaborationSession();
+        
+        // Stop video call
+        stopVideoCall();
+        
+        // Reset UI
+        document.getElementById('collaborateBtn').style.display = 'inline-block';
+        document.getElementById('collaboratingLabel').style.display = 'none';
+        document.querySelector('.container').classList.remove('collaboration-mode');
+        document.getElementById('rightPanel').style.display = 'none';
+        document.getElementById('collaborationToggle').style.display = 'none';
+        
+        // Keep the current connection status
+        if (window.socket && window.socket.connected) {
+            updateStatus('connected');
+        } else {
+            updateStatus('offline');
+        }
+        
+        // Clear chat and cursors
+        document.getElementById('chatMessages').innerHTML = '';
+        clearRemoteCursors();
+        
+        showNotification('Exited collaboration session');
+    }
+}
+
+// Video Call Functionality
+let localStream = null;
+let peer = null;
+let connections = new Map();
+
+function initializeVideoCall() {
+    if (typeof Peer === 'undefined') {
+        console.log('PeerJS not loaded');
+        return;
+    }
+    
+    if (!window.currentUser) {
+        console.log('No user logged in, skipping video call initialization');
+        return;
+    }
+    
+    peer = new Peer(window.currentUser.uid, {
+        host: 'peerjs-server.herokuapp.com',
+        port: 443,
+        secure: true
+    });
+    
+    peer.on('open', (id) => {
+        console.log('Peer connected with ID:', id);
+    });
+    
+    peer.on('call', (call) => {
+        if (localStream) {
+            call.answer(localStream);
+            call.on('stream', (remoteStream) => {
+                addVideoStream(call.peer, remoteStream);
+            });
+        }
+    });
+}
+
+function startVideoCall() {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+            localStream = stream;
+            addVideoStream('local', stream);
+            
+            // Notify other users about video call
+            if (window.socket && window.currentRoom) {
+                window.socket.emit('video-call-start', {
+                    roomId: window.currentRoom,
+                    peerId: peer.id
+                });
+            }
+        })
+        .catch((err) => {
+            console.error('Failed to get media:', err);
+            showNotification('Camera/microphone access denied', 'error');
+        });
+}
+
+function stopVideoCall() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    connections.forEach((call) => {
+        call.close();
+    });
+    connections.clear();
+    
+    document.getElementById('videoGrid').innerHTML = '';
+    
+    if (window.socket && window.currentRoom) {
+        window.socket.emit('video-call-end', {
+            roomId: window.currentRoom
+        });
+    }
+}
+
+function addVideoStream(userId, stream) {
+    const videoGrid = document.getElementById('videoGrid');
+    const existingVideo = document.getElementById(`video-${userId}`);
+    
+    if (existingVideo) {
+        existingVideo.srcObject = stream;
+        return;
+    }
+    
+    const videoContainer = document.createElement('div');
+    videoContainer.className = 'video-container';
+    videoContainer.id = `video-${userId}`;
+    
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.muted = userId === 'local';
+    
+    const username = document.createElement('div');
+    username.className = 'video-username';
+    username.textContent = userId === 'local' ? 'You' : userId;
+    
+    videoContainer.appendChild(video);
+    videoContainer.appendChild(username);
+    videoGrid.appendChild(videoContainer);
+}
+
+// Video controls
+function setupVideoControls() {
+    document.getElementById('toggleVideo').addEventListener('click', () => {
+        if (localStream) {
+            stopVideoCall();
+        } else {
+            startVideoCall();
+        }
+    });
+    
+    document.getElementById('toggleAudio').addEventListener('click', () => {
+        if (localStream) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                const btn = document.getElementById('toggleAudio');
+                btn.innerHTML = audioTrack.enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+            }
+        }
+    });
+}
+
+function setupCollaborationToggle() {
+    const toggleBtn = document.getElementById('collaborationToggle');
+    const rightPanel = document.getElementById('rightPanel');
+    const container = document.querySelector('.container');
+    
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            const isVisible = rightPanel.style.display !== 'none';
+            
+            if (isVisible) {
+                // Hide panel
+                rightPanel.style.display = 'none';
+                container.classList.remove('collaboration-mode');
+                toggleBtn.classList.remove('panel-open');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+            } else {
+                // Show panel
+                rightPanel.style.display = 'block';
+                container.classList.add('collaboration-mode');
+                toggleBtn.classList.add('panel-open');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+            }
+        });
     }
 }

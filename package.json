@@ -1,10 +1,9 @@
 {
   "name": "codenexus-pro",
   "version": "1.0.0",
-  "description": "Professional Collaborative Coding Platform",
+  "description": "Real-time collaborative code editor",
   "main": "server.js",
   "scripts": {
-    "build": "echo 'No build step required'",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
@@ -14,8 +13,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "keywords": ["collaborative", "coding", "editor", "realtime"],
-  "author": "Your Name",
-  "license": "MIT"
+  }
 }
