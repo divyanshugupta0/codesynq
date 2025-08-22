@@ -89,14 +89,21 @@ function tryServerConnection() {
             console.log('🔌 Attempting to connect to server');
             updateStatus('connecting');
             
-            // Use current domain for production, localhost for development
-            const serverUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+            // Always try to connect to current origin for deployed version
+            const serverUrl = window.location.origin;
             console.log('Connecting to:', serverUrl);
+            console.log('Current hostname:', window.location.hostname);
+            console.log('Current protocol:', window.location.protocol);
             
             window.socket = io(serverUrl, { 
-                timeout: 5000,
+                timeout: 15000,
                 forceNew: true,
-                transports: ['websocket', 'polling']
+                transports: ['polling'],
+                upgrade: false,
+                autoConnect: true,
+                reconnection: true,
+                reconnectionAttempts: 3,
+                reconnectionDelay: 1000
             });
             
             let connected = false;
@@ -261,16 +268,18 @@ function tryServerConnection() {
             });
             
             // Store timeout reference for clearing
-            // Force timeout after 1 second
+            // Force timeout after 10 seconds for production
             const forceTimeout = setTimeout(() => {
                 if (!connected) {
                     console.log('⚠️ Connection timeout - switching to solo mode');
+                    console.log('Socket state:', window.socket?.connected, window.socket?.disconnected);
+                    console.log('Socket transport:', window.socket?.io?.engine?.transport?.name);
                     updateStatus('offline');
                     if (window.socket) {
                         window.socket.disconnect();
                     }
                 }
-            }, 1000);
+            }, 10000);
             
             // Clear timeout if connected
             window.socket.on('connect', function() {

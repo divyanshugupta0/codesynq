@@ -17,6 +17,24 @@ const io = socketIo(server, {
 
 app.use(express.static(path.join(__dirname)));
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        connections: io.engine.clientsCount || 0
+    });
+});
+
+// Socket.io status endpoint
+app.get('/socket-status', (req, res) => {
+    res.json({
+        connected_clients: io.engine.clientsCount || 0,
+        rooms: rooms.size,
+        users: users.size
+    });
+});
+
 const rooms = new Map();
 const users = new Map();
 const runningProcesses = new Map();
@@ -600,6 +618,8 @@ function executeCpp(code, socket, roomId, callback) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log('Environment:', process.env.NODE_ENV || 'development');
+    console.log('CORS enabled for all origins');
 });
