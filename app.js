@@ -139,9 +139,6 @@ function tryServerConnection() {
                 // Clear execution flag to prevent fallback
                 window.executionId = null;
                 
-                // Reset run button
-                resetRunButton();
-                
                 // Clear terminal first to remove any fallback messages
                 if (data.language !== 'javascript') {
                     clearTerminal();
@@ -161,6 +158,8 @@ function tryServerConnection() {
             window.socket.on('terminal-output', function(data) {
                 // Clear execution flag since server is responding
                 window.executionId = null;
+                // Reset button on first output
+                resetRunButton();
                 displayRealTimeOutput(data.text, data.type);
             });
             
@@ -1388,6 +1387,7 @@ function switchPanel(panelName) {
 
 function displayOutput(output, error) {
     console.log('displayOutput called:', { output, error });
+    resetRunButton();
     const consolePanel = document.getElementById('console');
     if (!consolePanel) {
         console.log('Console panel not found!');
@@ -1409,6 +1409,7 @@ function displayOutput(output, error) {
 
 function displayOutputInTerminal(output, error) {
     console.log('displayOutputInTerminal called:', { output, error });
+    resetRunButton();
     const terminalPanel = document.getElementById('terminal');
     if (!terminalPanel) {
         console.log('Terminal panel not found!');
