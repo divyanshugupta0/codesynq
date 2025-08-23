@@ -181,13 +181,19 @@ body {
     display: none;
 }
 
-/* White cursor */
+/* Theme-specific cursor colors */
 .CodeMirror-cursor {
-    border-left: 2px solid #ffffff !important;
+    border-left: 2px solid var(--text-primary) !important;
 }
 
 .CodeMirror-focused .CodeMirror-cursor {
-    border-left: 2px solid #ffffff !important;
+    border-left: 2px solid var(--text-primary) !important;
+}
+
+/* Light theme cursor override */
+[data-theme="light"] .CodeMirror-cursor,
+[data-theme="light"] .CodeMirror-focused .CodeMirror-cursor {
+    border-left: 2px solid #000000 !important;
 }
 
 .CodeMirror-gutters {
@@ -1283,6 +1289,131 @@ body {
 .notification.warning {
     border-color: var(--warning-color);
     color: var(--warning-color);
+}
+
+/* Tab System */
+.tab-bar {
+    display: flex;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 0.5rem;
+    min-height: 40px;
+}
+
+.editor-tabs {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.editor-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.editor-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    margin-right: 2px;
+    transition: all 0.2s;
+    max-width: 200px;
+    min-width: 120px;
+}
+
+.editor-tab.active {
+    background: var(--bg-primary);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.editor-tab:hover {
+    background: var(--bg-primary);
+}
+
+.tab-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tab-close {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.tab-close:hover {
+    background: var(--danger-color);
+    color: white;
+}
+
+.add-tab-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.add-tab-btn:hover {
+    background: var(--bg-secondary);
+    color: var(--accent-color);
+}
+
+/* Autocomplete Suggestions */
+.CodeMirror-hints {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    box-shadow: var(--shadow) !important;
+    font-family: 'Consolas', monospace !important;
+    font-size: 13px !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+}
+
+.CodeMirror-hint {
+    color: var(--text-primary) !important;
+    padding: 6px 12px !important;
+    border-radius: 4px !important;
+    margin: 2px !important;
+    cursor: pointer !important;
+}
+
+.CodeMirror-hint-active {
+    background: var(--accent-color) !important;
+    color: white !important;
+}
+
+.CodeMirror-hint:hover {
+    background: var(--bg-tertiary) !important;
 }
 
 /* Collaboration Toggle */

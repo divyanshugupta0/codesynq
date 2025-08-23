@@ -6,6 +6,11 @@ let isHost = false;
 let currentEditMode = 'freestyle';
 let currentEditor = null;
 let roomData = null;
+let currentSavedFile = null; // {key: string, name: string}
+let hasUnsavedChanges = false;
+let isTabMode = false;
+let editorTabs = [];
+let activeTabIndex = 0;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -33,12 +38,8 @@ function initializeApp() {
         
         console.log('App initialized successfully');
     
-    // Check for room parameter in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room');
-    if (roomId) {
-        setTimeout(() => joinCollaborationRoom(roomId), 2000);
-    }
+    // Check for room parameter in URL and auto-join
+    checkAndJoinFromURL();
     
     } catch (error) {
         console.error('App initialization failed:', error);
@@ -251,12 +252,16 @@ function tryServerConnection() {
             
             window.socket.on('room-joined', function(data) {
                 console.log('Room joined event received:', data);
-                if (editor) {
+                
+                // Update editor with room code
+                if (editor && data.code) {
                     editor.setValue(data.code);
-                    document.getElementById('languageSelect').value = data.language;
-                    const mode = window.getCodeMirrorMode(data.language);
+                    document.getElementById('languageSelect').value = data.language || 'javascript';
+                    const mode = window.getCodeMirrorMode(data.language || 'javascript');
                     editor.setOption('mode', mode);
                 }
+                
+                // Set collaboration state
                 currentEditMode = data.mode || 'freestyle';
                 if (data.host && window.currentUser && data.host === window.currentUser.uid) {
                     isHost = true;
@@ -267,7 +272,12 @@ function tryServerConnection() {
                     currentEditor = null;
                 }
                 isCollaborating = true;
+                
+                // Show collaboration UI
+                showCollaborationUI(data.roomId || window.currentRoom);
+                
                 setTimeout(() => updateEditorPermissions(), 100);
+                showNotification('Successfully joined collaboration room!');
             });
             
             window.socket.on('edit-rejected', function() {
@@ -355,11 +365,48 @@ function setupEditor() {
             indentUnit: 2,
             tabSize: 2,
             lineWrapping: true,
-            value: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\nconsole.log("Hello, World!");'
+            hintOptions: {hint: getLanguageHints},
+            extraKeys: {
+                'Ctrl-Space': 'autocomplete',
+                'Ctrl-S': function(cm) {
+                    saveCode();
+                    return false;
+                },
+                'Tab': function(cm) {
+                    if (cm.somethingSelected()) {
+                        cm.indentSelection('add');
+                    } else {
+                        cm.replaceSelection('    ');
+                    }
+                }
+            },
+            value: '// Welcome to CodeSynq!\n// Start coding here...\n// Press Ctrl+Space for suggestions\n\nconsole.log("Hello, World!");'
         });
         
         window.editor = editor;
         window.isEditing = false;
+        
+        // Enable auto-suggestions on typing
+        editor.on('inputRead', function(cm, change) {
+            if (change.text[0].match(/[a-zA-Z]/)) {
+                setTimeout(() => {
+                    if (!cm.state.completionActive) {
+                        CodeMirror.commands.autocomplete(cm, null, {completeSingle: false});
+                    }
+                }, 100);
+            }
+        });
+        
+        // Track changes for save indication
+        editor.on('change', function(instance, changeObj) {
+            if (isTabMode && editorTabs[activeTabIndex]) {
+                editorTabs[activeTabIndex].hasChanges = true;
+                renderTabs();
+            } else if (currentSavedFile && !hasUnsavedChanges) {
+                hasUnsavedChanges = true;
+                updateSaveButtonText();
+            }
+        });
         
         // Add real-time collaboration and auto-save
         editor.on('change', function(instance, changeObj) {
@@ -426,6 +473,19 @@ function setupUI() {
             }
             
             const newLanguage = e.target.value;
+            
+            // Tab mode specific logic
+            if (isTabMode && editorTabs[activeTabIndex]) {
+                editorTabs[activeTabIndex].language = newLanguage;
+                const mode = window.getCodeMirrorMode(newLanguage);
+                if (editor) {
+                    editor.setOption('mode', mode);
+                }
+                renderTabs();
+                return;
+            }
+            
+            // Original single-file mode logic
             const currentCode = editor ? editor.getValue() : '';
             
             // Auto-save before language change for non-logged users
@@ -607,6 +667,10 @@ function setupUI() {
     // Video controls
     setupVideoControls();
     
+    // Tab mode functionality
+    document.getElementById('tabModeBtn').addEventListener('click', toggleTabMode);
+    document.getElementById('addTabBtn').addEventListener('click', addNewTab);
+    
     // Collaboration toggle
     setupCollaborationToggle();
     
@@ -630,6 +694,184 @@ function setupUI() {
     
     console.log('UI event listeners setup complete');
 }
+
+let monacoEditor = null;
+
+function toggleTabMode() {
+    isTabMode = !isTabMode;
+    const tabModeBtn = document.getElementById('tabModeBtn');
+    const editorSection = document.querySelector('.editor-section');
+    
+    if (isTabMode) {
+        tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit VS Code';
+        tabModeBtn.classList.add('active');
+        
+        editorSection.innerHTML = `
+            <div class="editor-toolbar">
+                <div class="toolbar-left">
+                    <button id="tabModeBtn" class="btn-secondary active"><i class="fas fa-times"></i> Exit VS Code</button>
+                    <button id="saveVSCode" class="btn-primary"><i class="fas fa-save"></i> Save to Firebase</button>
+                </div>
+            </div>
+            <div id="monacoContainer" style="width:100%;height:calc(100% - 80px);"></div>
+        `;
+        
+        loadMonacoEditor();
+        document.getElementById('tabModeBtn').addEventListener('click', toggleTabMode);
+        document.getElementById('saveVSCode').addEventListener('click', saveVSCodeContent);
+    } else {
+        location.reload();
+    }
+}
+
+function loadMonacoEditor() {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js';
+    script.onload = () => {
+        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+        require(['vs/editor/editor.main'], () => {
+            const language = document.getElementById('languageSelect')?.value || 'javascript';
+            const monacoLang = getMonacoLanguage(language);
+            const defaultCode = getDefaultCode(language);
+            
+            monacoEditor = monaco.editor.create(document.getElementById('monacoContainer'), {
+                value: defaultCode,
+                language: monacoLang,
+                theme: 'vs-dark',
+                automaticLayout: true,
+                fontSize: 14,
+                minimap: { enabled: true }
+            });
+        });
+    };
+    document.head.appendChild(script);
+}
+
+function getMonacoLanguage(language) {
+    const mapping = {
+        javascript: 'javascript',
+        python: 'python',
+        html: 'html',
+        css: 'css',
+        java: 'java',
+        c: 'c',
+        cpp: 'cpp'
+    };
+    return mapping[language] || 'javascript';
+}
+
+function saveVSCodeContent() {
+    if (!window.currentUser) {
+        showNotification('Please login to save your code!');
+        return;
+    }
+    
+    const fileName = prompt('Enter file name:');
+    if (!fileName) return;
+    
+    const content = monacoEditor ? monacoEditor.getValue() : '';
+    const language = document.getElementById('languageSelect')?.value || 'javascript';
+    
+    const codeData = {
+        name: fileName,
+        content: content,
+        language: language,
+        source: 'vscode-mode',
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        lastModified: new Date().toISOString()
+    };
+    
+    database.ref(`users/${window.currentUser.uid}/savedCodes`).push().set(codeData).then(() => {
+        showNotification(`Code saved as "${fileName}"!`);
+    }).catch((error) => {
+        showNotification('Error saving: ' + error.message);
+    });
+}
+
+function addTab(name, content = '', language = 'javascript') {
+    const tab = {
+        id: Date.now(),
+        name: name,
+        content: content,
+        language: language,
+        savedFile: null,
+        hasChanges: false
+    };
+    editorTabs.push(tab);
+    return tab;
+}
+
+function addNewTab() {
+    const newTab = addTab('Untitled', getDefaultCode('javascript'), 'javascript');
+    activeTabIndex = editorTabs.length - 1;
+    renderTabs();
+    switchToTab(activeTabIndex);
+}
+
+function renderTabs() {
+    const tabsContainer = document.getElementById('editorTabs');
+    tabsContainer.innerHTML = '';
+    
+    editorTabs.forEach((tab, index) => {
+        const tabElement = document.createElement('div');
+        tabElement.className = `editor-tab ${index === activeTabIndex ? 'active' : ''}`;
+        tabElement.innerHTML = `
+            <span class="tab-name">${tab.name}${tab.hasChanges ? '*' : ''}</span>
+            <button class="tab-close" onclick="closeTab(${index})" title="Close tab">×</button>
+        `;
+        tabElement.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('tab-close')) {
+                switchToTab(index);
+            }
+        });
+        tabsContainer.appendChild(tabElement);
+    });
+}
+
+function switchToTab(index) {
+    if (!isTabMode || index < 0 || index >= editorTabs.length) return;
+    
+    // Save current tab content
+    if (editorTabs[activeTabIndex] && editor) {
+        editorTabs[activeTabIndex].content = editor.getValue();
+        editorTabs[activeTabIndex].language = document.getElementById('languageSelect').value;
+    }
+    
+    activeTabIndex = index;
+    const tab = editorTabs[activeTabIndex];
+    
+    // Load tab content
+    if (editor) {
+        editor.setValue(tab.content);
+        document.getElementById('languageSelect').value = tab.language;
+        const mode = window.getCodeMirrorMode(tab.language);
+        editor.setOption('mode', mode);
+    }
+    
+    renderTabs();
+}
+
+function closeTab(index) {
+    if (editorTabs.length <= 1) {
+        showNotification('Cannot close the last tab');
+        return;
+    }
+    
+    editorTabs.splice(index, 1);
+    
+    if (activeTabIndex >= index && activeTabIndex > 0) {
+        activeTabIndex--;
+    }
+    
+    if (activeTabIndex >= editorTabs.length) {
+        activeTabIndex = editorTabs.length - 1;
+    }
+    
+    renderTabs();
+    switchToTab(activeTabIndex);
+}
+
+window.closeTab = closeTab;
 
 function setupThemeAndSettings() {
     const themeToggle = document.getElementById('themeToggle');
@@ -956,9 +1198,36 @@ function saveCode() {
         return;
     }
     
-    // Show save modal
+    // If file is already saved, update it directly
+    if (currentSavedFile) {
+        updateSavedFile();
+        return;
+    }
+    
+    // Show save modal for new file
     document.getElementById('saveCodeModal').style.display = 'block';
     document.getElementById('fileNameInput').focus();
+}
+
+function updateSavedFile() {
+    const code = editor && editor.getValue ? editor.getValue() : '';
+    const language = document.getElementById('languageSelect').value;
+    
+    const codeData = {
+        name: currentSavedFile.name,
+        content: code,
+        language: language,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        lastModified: new Date().toISOString()
+    };
+    
+    database.ref(`users/${window.currentUser.uid}/savedCodes/${currentSavedFile.key}`).set(codeData).then(() => {
+        hasUnsavedChanges = false;
+        updateSaveButtonText();
+        showNotification(`Updated "${currentSavedFile.name}"!`);
+    }).catch((error) => {
+        showNotification('Error updating file: ' + error.message);
+    });
 }
 
 function saveCodeWithName(fileName) {
@@ -981,6 +1250,14 @@ function saveCodeWithName(fileName) {
     // Save to Firebase with unique key
     const codeRef = database.ref(`users/${window.currentUser.uid}/savedCodes`).push();
     codeRef.set(codeData).then(() => {
+        // Track the saved file
+        currentSavedFile = {
+            key: codeRef.key,
+            name: fileName.trim()
+        };
+        hasUnsavedChanges = false;
+        updateSaveButtonText();
+        
         showNotification(`Code saved as "${fileName}"!`);
         document.getElementById('saveCodeModal').style.display = 'none';
         document.getElementById('fileNameInput').value = '';
@@ -1109,13 +1386,13 @@ function openCodePreview(key, codeData) {
     document.getElementById('previewTitle').textContent = codeData.name;
     document.getElementById('codePreview').textContent = codeData.content;
     
-    document.getElementById('loadCode').onclick = () => loadSavedCode(codeData);
+    document.getElementById('loadCode').onclick = () => loadSavedCode(codeData, key);
     document.getElementById('deleteCode').onclick = () => deleteSavedCode(key, codeData.name);
     
     modal.style.display = 'block';
 }
 
-function loadSavedCode(codeData) {
+function loadSavedCode(codeData, fileKey) {
     if (editor) {
         editor.setValue(codeData.content);
         document.getElementById('languageSelect').value = codeData.language;
@@ -1123,9 +1400,32 @@ function loadSavedCode(codeData) {
         editor.setOption('mode', mode);
     }
     
+    // Track the loaded file
+    currentSavedFile = {
+        key: fileKey,
+        name: codeData.name
+    };
+    hasUnsavedChanges = false;
+    updateSaveButtonText();
+    
     document.getElementById('codePreviewModal').style.display = 'none';
     document.getElementById('savedCodesModal').style.display = 'none';
     showNotification(`Loaded "${codeData.name}"`);
+}
+
+function updateSaveButtonText() {
+    const saveText = document.getElementById('saveText');
+    if (!saveText) return;
+    
+    if (currentSavedFile) {
+        if (hasUnsavedChanges) {
+            saveText.textContent = `Save "${currentSavedFile.name}"*`;
+        } else {
+            saveText.textContent = `"${currentSavedFile.name}" Saved`;
+        }
+    } else {
+        saveText.textContent = 'Save';
+    }
 }
 
 function deleteSavedCode(key, name) {
@@ -1769,13 +2069,13 @@ let pendingLanguageSwitch = null;
 
 function getDefaultCode(language) {
     const defaults = {
-        javascript: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\nconsole.log("Hello, World!");',
-        python: '# Welcome to CodeNexus Pro!\n# Start coding here...\n\nprint("Hello, World!")',
-        html: '<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>',
-        css: '/* Welcome to CodeNexus Pro! */\n/* Start styling here... */\n\nbody {\n    font-family: Arial, sans-serif;\n}',
-        java: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-        c: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
-        cpp: '// Welcome to CodeNexus Pro!\n// Start coding here...\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}'
+        javascript: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\nconsole.log("Hello, World!");',
+        python: '# Welcome to CodeSynq!\n# Press Ctrl+Space for suggestions\n\nprint("Hello, World!")',
+        html: '<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <!-- Press Ctrl+Space for suggestions -->\n    <h1>Hello, World!</h1>\n</body>\n</html>',
+        css: '/* Welcome to CodeSynq! */\n/* Press Ctrl+Space for suggestions */\n\nbody {\n    font-family: Arial, sans-serif;\n}',
+        java: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
+        c: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
+        cpp: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}'
     };
     return defaults[language] || defaults.javascript;
 }
@@ -1830,6 +2130,12 @@ function switchLanguage(newLanguage) {
         editor.setOption('mode', mode);
         editor.setValue(getDefaultCode(newLanguage));
     }
+    
+    // Reset file tracking when switching languages
+    currentSavedFile = null;
+    hasUnsavedChanges = false;
+    updateSaveButtonText();
+    
     updateLivePreviewVisibility(newLanguage);
 }
 
@@ -1900,6 +2206,28 @@ function restoreEditorContent() {
 
 // Profile modal removed - using Firebase auth
 
+function checkAndJoinFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+    
+    if (roomId) {
+        console.log('Room ID found in URL:', roomId);
+        
+        // Wait for socket connection and then join
+        const attemptJoin = () => {
+            if (window.socket && window.socket.connected) {
+                joinCollaborationRoom(roomId);
+            } else {
+                console.log('Socket not ready, retrying in 1 second...');
+                setTimeout(attemptJoin, 1000);
+            }
+        };
+        
+        // Start attempting to join after a short delay
+        setTimeout(attemptJoin, 1500);
+    }
+}
+
 function joinCollaborationRoom(roomId) {
     console.log('Attempting to join room:', roomId, 'User:', window.currentUser);
     
@@ -1943,8 +2271,9 @@ function joinCollaborationRoom(roomId) {
     // Update editor permissions to show participant controls
     updateEditorPermissions();
     
-    // Join room when socket connects
+    // Join room via socket
     if (window.socket && window.socket.connected) {
+        console.log('Emitting join-room event for:', roomId);
         window.socket.emit('join-room', {
             roomId,
             user: {
@@ -1955,24 +2284,34 @@ function joinCollaborationRoom(roomId) {
             }
         });
     } else {
-        // If socket not connected, try to connect and then join
-        console.log('Socket not connected, attempting to connect first');
-        setTimeout(() => {
-            if (window.socket && window.socket.connected) {
-                window.socket.emit('join-room', {
-                    roomId,
-                    user: {
-                        uid: window.currentUser.uid,
-                        username: window.currentUser.displayName,
-                        profilePic: window.currentUser.photoURL,
-                        isHost: false
-                    }
-                });
-            }
-        }, 1000);
+        console.error('Socket not connected when trying to join room');
+        showNotification('Connection error. Please refresh and try again.', 'error');
+        return;
     }
     
-    showNotification('Joined collaboration session!');
+    // Don't show notification here - wait for room-joined event
+}
+
+function showCollaborationUI(roomId) {
+    // Update UI to show collaborating state
+    document.getElementById('collaborateBtn').style.display = 'none';
+    document.getElementById('collaboratingLabel').style.display = 'inline-block';
+    
+    // Update dropdown info
+    document.getElementById('dropdownRoomId').textContent = roomId;
+    document.getElementById('dropdownMode').textContent = isHost ? currentEditMode : 'Joined Session';
+    document.getElementById('dropdownShareLink').value = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+    
+    // Show collaboration toggle button
+    const toggleBtn = document.getElementById('collaborationToggle');
+    toggleBtn.style.display = 'flex';
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+    toggleBtn.classList.remove('panel-open');
+    
+    // Update status
+    const statusText = isHost ? `Host - ${roomId}` : `Joined - ${roomId}`;
+    document.getElementById('roomStatus').textContent = statusText;
+    document.getElementById('roomStatus').className = 'status-indicator connected';
 }
 
 // Firebase collaboration persistence functions
@@ -2165,6 +2504,68 @@ function applyTheme(theme) {
     } else {
         localStorage.setItem('selectedTheme', theme);
     }
+}
+
+// Language-specific suggestions
+const languageSuggestions = {
+    javascript: [
+        'console.log', 'function', 'var', 'let', 'const', 'if', 'else', 'for', 'while', 'return',
+        'document', 'window', 'addEventListener', 'getElementById', 'querySelector',
+        'Array', 'Object', 'String', 'Number', 'Boolean', 'Date', 'Math', 'JSON',
+        'setTimeout', 'setInterval', 'Promise', 'async', 'await', 'try', 'catch', 'throw'
+    ],
+    python: [
+        'print', 'def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'import',
+        'from', 'as', 'try', 'except', 'finally', 'with', 'lambda', 'yield',
+        'len', 'range', 'enumerate', 'zip', 'map', 'filter', 'sorted', 'reversed',
+        'str', 'int', 'float', 'list', 'dict', 'tuple', 'set', 'bool'
+    ],
+    html: [
+        'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'img', 'ul', 'ol', 'li',
+        'table', 'tr', 'td', 'th', 'form', 'input', 'button', 'select', 'option',
+        'head', 'body', 'title', 'meta', 'link', 'script', 'style'
+    ],
+    css: [
+        'color', 'background', 'font-size', 'font-family', 'margin', 'padding', 'border',
+        'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom',
+        'flex', 'grid', 'text-align', 'text-decoration', 'opacity', 'z-index'
+    ],
+    java: [
+        'public', 'private', 'protected', 'static', 'final', 'class', 'interface',
+        'extends', 'implements', 'import', 'package', 'void', 'int', 'String',
+        'boolean', 'double', 'float', 'char', 'long', 'short', 'byte',
+        'System.out.println', 'new', 'this', 'super', 'null', 'true', 'false'
+    ],
+    c: [
+        '#include', 'stdio.h', 'stdlib.h', 'string.h', 'int', 'char', 'float', 'double',
+        'void', 'main', 'printf', 'scanf', 'malloc', 'free', 'sizeof',
+        'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return'
+    ],
+    cpp: [
+        '#include', 'iostream', 'vector', 'string', 'map', 'set', 'queue', 'stack',
+        'using', 'namespace', 'std', 'cout', 'cin', 'endl', 'class', 'public', 'private',
+        'int', 'char', 'float', 'double', 'bool', 'void', 'new', 'delete'
+    ]
+};
+
+function getLanguageHints(cm, options) {
+    const language = document.getElementById('languageSelect').value;
+    const cursor = cm.getCursor();
+    const token = cm.getTokenAt(cursor);
+    const start = token.start;
+    const end = cursor.ch;
+    const word = token.string;
+    
+    const suggestions = languageSuggestions[language] || [];
+    const filtered = suggestions.filter(item => 
+        item.toLowerCase().startsWith(word.toLowerCase())
+    );
+    
+    return {
+        list: filtered,
+        from: CodeMirror.Pos(cursor.line, start),
+        to: CodeMirror.Pos(cursor.line, end)
+    };
 }
 
 // Utility functions
