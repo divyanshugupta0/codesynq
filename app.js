@@ -148,7 +148,7 @@ function tryServerConnection() {
                 if (data.language === 'javascript') {
                     displayOutput(data.output, data.error);
                 } else {
-                    displayOutputInTerminal(data.output, data.error);
+                    displayOutputInTerminal(data.output, data.error, data.complexity);
                 }
                 // Handle HTML preview
                 if (data.htmlContent) {
@@ -373,10 +373,12 @@ function setupEditor() {
                     return false;
                 },
                 'Tab': function(cm) {
+                    const tabSize = cm.getOption('tabSize');
+                    const spaces = ' '.repeat(tabSize);
                     if (cm.somethingSelected()) {
                         cm.indentSelection('add');
                     } else {
-                        cm.replaceSelection('    ');
+                        cm.replaceSelection(spaces);
                     }
                 }
             },
@@ -874,14 +876,32 @@ function closeTab(index) {
 window.closeTab = closeTab;
 
 function setupThemeAndSettings() {
-    const themeToggle = document.getElementById('themeToggle');
-    const themeMenu = document.getElementById('themeMenu');
-    const settingsBtn = document.getElementById('settingsBtn');
+    const blurOverlay = document.getElementById('dropdownBlurOverlay');
+    const dropdowns = {
+        theme: { btn: document.getElementById('themeToggle'), menu: document.getElementById('themeMenu') },
+        layout: { btn: document.getElementById('layoutBtn'), menu: document.getElementById('layoutMenu') },
+        settings: { btn: document.getElementById('settingsBtn'), menu: document.getElementById('settingsMenu') },
+        profile: { btn: document.getElementById('profileBtn'), menu: document.getElementById('profileMenu') }
+    };
     
-    if (themeToggle && themeMenu) {
-        themeToggle.addEventListener('click', function(e) {
+    function closeAllDropdowns() {
+        Object.values(dropdowns).forEach(dropdown => {
+            if (dropdown.menu) dropdown.menu.classList.remove('show');
+        });
+        if (blurOverlay) blurOverlay.classList.remove('show');
+    }
+    
+    function openDropdown(menu) {
+        closeAllDropdowns();
+        menu.classList.add('show');
+        if (blurOverlay) blurOverlay.classList.add('show');
+    }
+    
+    // Theme dropdown
+    if (dropdowns.theme.btn && dropdowns.theme.menu) {
+        dropdowns.theme.btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            themeMenu.classList.toggle('show');
+            openDropdown(dropdowns.theme.menu);
         });
         
         document.querySelectorAll('.theme-option').forEach(option => {
@@ -892,56 +912,152 @@ function setupThemeAndSettings() {
                 document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('active'));
                 this.classList.add('active');
                 
-                themeMenu.classList.remove('show');
+                closeAllDropdowns();
                 showNotification(`Theme changed to ${theme}`);
             });
         });
-        
-        document.addEventListener('click', function() {
-            themeMenu.classList.remove('show');
+    }
+    
+    // Layout dropdown
+    if (dropdowns.layout.btn && dropdowns.layout.menu) {
+        dropdowns.layout.btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(dropdowns.layout.menu);
         });
     }
     
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', function() {
-            showNotification('Settings panel coming soon!');
+    // Settings dropdown
+    if (dropdowns.settings.btn && dropdowns.settings.menu) {
+        dropdowns.settings.btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(dropdowns.settings.menu);
+        });
+        
+        // Prevent settings menu from closing when clicking inside it
+        dropdowns.settings.menu.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+        
+        setupSettingsHandlers();
+    }
+    
+    // Profile dropdown
+    if (dropdowns.profile.btn && dropdowns.profile.menu) {
+        dropdowns.profile.btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(dropdowns.profile.menu);
+        });
+    }
+    
+    // Blur overlay click
+    if (blurOverlay) {
+        blurOverlay.addEventListener('click', closeAllDropdowns);
+    }
+    
+    // Global click handler
+    document.addEventListener('click', closeAllDropdowns);
+}
+
+function setupSettingsHandlers() {
+    const fontSizeSelect = document.getElementById('fontSizeSelect');
+    const tabSizeSelect = document.getElementById('tabSizeSelect');
+    const lineWrapToggle = document.getElementById('lineWrapToggle');
+    const autoCompleteToggle = document.getElementById('autoCompleteToggle');
+    const lineNumbersToggle = document.getElementById('lineNumbersToggle');
+    const minimapToggle = document.getElementById('minimapToggle');
+    
+    if (fontSizeSelect) {
+        fontSizeSelect.addEventListener('change', function() {
+            const fontSize = this.value + 'px';
+            if (editor) {
+                const editorElement = document.querySelector('.CodeMirror');
+                if (editorElement) {
+                    editorElement.style.fontSize = fontSize;
+                    editor.refresh();
+                }
+            }
+            showNotification(`Font size changed to ${this.value}px`);
+        });
+    }
+    
+    if (tabSizeSelect) {
+        tabSizeSelect.addEventListener('change', function() {
+            const tabSize = parseInt(this.value);
+            if (monacoEditor) {
+                // Monaco Editor (VS Code mode)
+                monacoEditor.updateOptions({
+                    tabSize: tabSize,
+                    insertSpaces: true
+                });
+            } else if (editor) {
+                // CodeMirror editor
+                editor.setOption('tabSize', tabSize);
+                editor.setOption('indentUnit', tabSize);
+            }
+            showNotification(`Tab size changed to ${tabSize} spaces`);
+        });
+    }
+    
+    if (lineWrapToggle) {
+        lineWrapToggle.addEventListener('change', function() {
+            if (editor) {
+                editor.setOption('lineWrapping', this.checked);
+            }
+            showNotification(`Line wrapping ${this.checked ? 'enabled' : 'disabled'}`);
+        });
+    }
+    
+    if (lineNumbersToggle) {
+        lineNumbersToggle.addEventListener('change', function() {
+            if (monacoEditor) {
+                monacoEditor.updateOptions({
+                    lineNumbers: this.checked ? 'on' : 'off'
+                });
+            } else if (editor) {
+                editor.setOption('lineNumbers', this.checked);
+            }
+            showNotification(`Line numbers ${this.checked ? 'enabled' : 'disabled'}`);
+        });
+    }
+    
+    if (minimapToggle) {
+        minimapToggle.addEventListener('change', function() {
+            if (monacoEditor) {
+                monacoEditor.updateOptions({
+                    minimap: { enabled: this.checked }
+                });
+                showNotification(`Minimap ${this.checked ? 'enabled' : 'disabled'}`);
+            } else {
+                showNotification('Minimap only available in VS Code mode');
+                this.checked = false;
+            }
         });
     }
 }
 
 function setupLayoutControls() {
-    const layoutBtn = document.getElementById('layoutBtn');
-    const layoutMenu = document.getElementById('layoutMenu');
-    
-    if (layoutBtn && layoutMenu) {
-        layoutBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            layoutMenu.classList.toggle('show');
+    // Layout dropdown is now handled in setupThemeAndSettings
+    document.querySelectorAll('.layout-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const layout = this.dataset.layout;
+            
+            // Save state for non-logged users before layout change
+            if (!window.currentUser) {
+                saveEditorContent();
+            }
+            
+            applyLayout(layout);
+            
+            document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
+            this.classList.add('active');
+            
+            const blurOverlay = document.getElementById('dropdownBlurOverlay');
+            document.getElementById('layoutMenu').classList.remove('show');
+            if (blurOverlay) blurOverlay.classList.remove('show');
+            
+            showNotification(`Layout changed to ${this.querySelector('span').textContent}`);
         });
-        
-        document.querySelectorAll('.layout-option').forEach(option => {
-            option.addEventListener('click', function() {
-                const layout = this.dataset.layout;
-                
-                // Save state for non-logged users before layout change
-                if (!window.currentUser) {
-                    saveEditorContent();
-                }
-                
-                applyLayout(layout);
-                
-                document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
-                this.classList.add('active');
-                
-                layoutMenu.classList.remove('show');
-                showNotification(`Layout changed to ${this.querySelector('span').textContent}`);
-            });
-        });
-        
-        document.addEventListener('click', function() {
-            layoutMenu.classList.remove('show');
-        });
-    }
+    });
 }
 
 function applyLayout(layout) {
@@ -1163,17 +1279,18 @@ function executeCode() {
             roomId: roomId,
             code,
             language,
-            executionId: currentExecutionId
+            executionId: currentExecutionId,
+            analyzeComplexity: true
         });
         
-        // Fallback after 8 seconds if no server response
+        // Fallback after 15 seconds if no server response (longer for server-hosted sites)
         setTimeout(() => {
             if (window.executionId === currentExecutionId) {
                 console.log('No server response, running locally');
                 resetRunButton();
                 runCodeLocally(code, language);
             }
-        }, 8000);
+        }, 15000);
         
         // Show HTML preview immediately for better UX
         if (language === 'html') {
@@ -1707,8 +1824,8 @@ function displayOutput(output, error) {
     console.log('Output displayed in console');
 }
 
-function displayOutputInTerminal(output, error) {
-    console.log('displayOutputInTerminal called:', { output, error });
+function displayOutputInTerminal(output, error, complexity) {
+    console.log('displayOutputInTerminal called:', { output, error, complexity });
     resetRunButton();
     const terminalPanel = document.getElementById('terminal');
     if (!terminalPanel) {
@@ -1717,11 +1834,24 @@ function displayOutputInTerminal(output, error) {
     }
     
     const timestamp = new Date().toLocaleTimeString();
+    const language = document.getElementById('languageSelect')?.value;
     
     if (error) {
         terminalPanel.innerHTML += `<div style="color: #f44336;">[${timestamp}] Error: ${error}</div>`;
     } else if (output) {
         terminalPanel.innerHTML += `<div style="color: #00ff00;">[${timestamp}] ${output}</div>`;
+        
+        // Check if Java program is waiting for input
+        if (language === 'java' && (output.includes('Enter') || output.includes('Input'))) {
+            setTimeout(() => addTerminalInput(), 200);
+        }
+    }
+    
+    // Always display complexity analysis for backend languages
+    if (['python', 'java', 'c', 'cpp'].includes(language)) {
+        const analysisComplexity = complexity || getLocalComplexity(editor ? editor.getValue() : '', language);
+        console.log('Showing complexity for', language, ':', analysisComplexity);
+        terminalPanel.innerHTML += `<div style="color: #ffa500; margin-top: 10px; padding: 8px; border-left: 3px solid #ffa500; background: rgba(255, 165, 0, 0.1); border-radius: 4px;"><strong>📊 Complexity Analysis:</strong><br>⏱️ Time Complexity: ${analysisComplexity.time}<br>💾 Space Complexity: ${analysisComplexity.space}</div>`;
     }
     
     terminalPanel.scrollTop = terminalPanel.scrollHeight;
@@ -1749,15 +1879,15 @@ function displayRealTimeOutput(text, type) {
     terminalPanel.scrollTop = terminalPanel.scrollHeight;
     switchTab('terminal');
     
-    // Add input field if program is waiting for input
+    // Add input field for Java Scanner prompts
     if (type === 'stdout' && !terminalPanel.querySelector('.terminal-input')) {
-        // If output doesn't end with newline, it's likely waiting for input
-        if (!text.endsWith('\n')) {
+        // Check for Java input prompts or if output doesn't end with newline
+        if (text.includes('Enter') || text.includes('Input') || !text.endsWith('\n')) {
             setTimeout(() => {
                 if (!terminalPanel.querySelector('.terminal-input')) {
                     addTerminalInput();
                 }
-            }, 200);
+            }, 100);
         }
     }
 }
@@ -1840,18 +1970,22 @@ window.rejectEditRequest = function(userId) {
 
 function addTerminalInput() {
     const terminalPanel = document.getElementById('terminal');
-    if (!terminalPanel) return;
+    if (!terminalPanel || terminalPanel.querySelector('.terminal-input')) return;
     
     const inputDiv = document.createElement('div');
     inputDiv.className = 'terminal-input';
     inputDiv.innerHTML = `
-        <input type="text" id="terminalInput" placeholder="Enter input..." style="
+        <input type="text" id="terminalInput" placeholder="Enter value and press Enter..." style="
             background: transparent;
-            border: none;
-            color: #00ff00;
+            border: 1px solid #555;
+            color: #ffffff;
             outline: none;
             font-family: 'Consolas', monospace;
             font-size: 13px;
+            padding: 4px;
+            margin: 2px 0;
+            border-radius: 3px;
+            width: 200px;
         ">
     `;
     
@@ -1862,13 +1996,13 @@ function addTerminalInput() {
     
     input.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            const value = input.value;
+            const value = input.value.trim();
             
             // Send input to server (server will echo it back)
             if (window.socket && window.socket.connected && window.currentRoom) {
                 window.socket.emit('terminal-input', {
                     roomId: window.currentRoom,
-                    input: value
+                    input: value + '\n'
                 });
             }
             
@@ -1934,16 +2068,16 @@ function runCodeLocally(code, language) {
                 break;
                 
             case 'python':
-                displayOutputInTerminal('', 'Python requires server connection with Python interpreter installed.');
+                displayOutputInTerminal('Python requires server connection with Python interpreter installed.', '', getLocalComplexity(code, language));
                 break;
             case 'java':
-                displayOutputInTerminal('', 'Java execution requires server connection. Please wait for server response...');
+                displayOutputInTerminal('Connecting to server for Java execution...', '', getLocalComplexity(code, language));
                 break;
             case 'c':
-                displayOutputInTerminal('', 'C: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH');
+                displayOutputInTerminal('', 'C: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH', getLocalComplexity(code, language));
                 break;
             case 'cpp':
-                displayOutputInTerminal('', 'C++: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH');
+                displayOutputInTerminal('', 'C++: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH', getLocalComplexity(code, language));
                 break;
                 
             default:
@@ -2495,6 +2629,9 @@ function applyTheme(theme) {
         editor.setOption('theme', editorThemes[theme] || 'vscode-dark');
     }
     
+    // Update favicon based on theme
+    updateFavicon(theme);
+    
     // Save theme preference
     if (window.currentUser && typeof database !== 'undefined') {
         database.ref(`users/${window.currentUser.uid}/preferences/theme`).set(theme).catch(e => {
@@ -2504,6 +2641,38 @@ function applyTheme(theme) {
     } else {
         localStorage.setItem('selectedTheme', theme);
     }
+}
+
+function updateFavicon(theme) {
+    const faviconColors = {
+        dark: '#0d1117',
+        light: '#ffffff', 
+        blue: '#0a1929',
+        green: '#0d1b0d'
+    };
+    
+    const iconColors = {
+        dark: '#007acc',
+        light: '#0066cc', 
+        blue: '#2196F3',
+        green: '#4CAF50'
+    };
+    
+    const bgColor = faviconColors[theme] || '#0d1117';
+    const iconColor = iconColors[theme] || '#007acc';
+    
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${bgColor}"/><text x="50" y="65" font-family="Arial, sans-serif" font-size="50" font-weight="bold" text-anchor="middle" fill="${iconColor}">&lt;/&gt;</text></svg>`;
+    
+    let favicon = document.querySelector('link[rel="icon"]');
+    if (favicon) {
+        favicon.remove();
+    }
+    
+    favicon = document.createElement('link');
+    favicon.rel = 'icon';
+    favicon.type = 'image/svg+xml';
+    favicon.href = 'data:image/svg+xml;base64,' + btoa(svg);
+    document.head.appendChild(favicon);
 }
 
 // Language-specific suggestions
@@ -2931,4 +3100,41 @@ function setupCollaborationToggle() {
             }
         });
     }
+}
+
+function getLocalComplexity(code, language) {
+    const patterns = {
+        loops: /\b(for|while|do)\s*\(/g,
+        nestedLoops: /\b(for|while)\s*\([^}]*\b(for|while)\s*\(/g,
+        recursion: /\b\w+\s*\([^)]*\)\s*{[^}]*\b\w+\s*\(/g,
+        arrays: /\b(int|char|float|double|string)\s*\w+\s*\[|\bnew\s+\w+\[|\blist\s*\(|\barray\s*\(/g,
+        sorting: /\b(sort|Sort|sorted|quicksort|mergesort|heapsort)\b/g
+    };
+    
+    const loopCount = (code.match(patterns.loops) || []).length;
+    const nestedLoopCount = (code.match(patterns.nestedLoops) || []).length;
+    const hasRecursion = patterns.recursion.test(code);
+    const hasArrays = patterns.arrays.test(code);
+    const hasSorting = patterns.sorting.test(code);
+    
+    let timeComplexity = 'O(1)';
+    let spaceComplexity = 'O(1)';
+    
+    if (hasSorting) {
+        timeComplexity = 'O(n log n)';
+        spaceComplexity = 'O(log n)';
+    } else if (nestedLoopCount > 0) {
+        timeComplexity = 'O(n²)';
+        spaceComplexity = hasArrays ? 'O(n)' : 'O(1)';
+    } else if (hasRecursion) {
+        timeComplexity = 'O(2^n)';
+        spaceComplexity = 'O(n)';
+    } else if (loopCount > 0) {
+        timeComplexity = 'O(n)';
+        spaceComplexity = hasArrays ? 'O(n)' : 'O(1)';
+    } else if (hasArrays) {
+        spaceComplexity = 'O(n)';
+    }
+    
+    return { time: timeComplexity, space: spaceComplexity };
 }

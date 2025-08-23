@@ -16,7 +16,7 @@
 <body>
     <header class="site-header">
         <div class="header-content">
-            <h1 class="site-title"><i class="fas fa-code"></i> CodeSynq <br><small style="font-size: 0.4em; font-weight: 300; font-style: italic; color: var(--text-secondary); display: block; margin-top: 18px; font-family: 'Georgia', serif; letter-spacing: 0.5px;">by: Divyanshu Gupta</small></h1>
+            <h1 class="site-title"><i class="fas fa-code"></i> CodeSynq <br><small style="font-size: 0.4em; font-weight: 300; font-style: italic; color: var(--text-secondary); display: block; margin-top: 25px; font-family: 'Georgia', serif; letter-spacing: 0.5px;">by: Divyanshu Gupta</small></h1>
             <div class="header-actions">
                 <div class="theme-dropdown">
                     <button id="themeToggle" class="btn-icon" title="Change Theme"><i class="fas fa-palette"></i></button>
@@ -115,7 +115,54 @@
                         </div>
                     </div>
                 </div>
-                <button id="settingsBtn" class="btn-icon" title="Settings"><i class="fas fa-cog"></i></button>
+                <div class="settings-dropdown">
+                    <button id="settingsBtn" class="btn-icon" title="Settings"><i class="fas fa-cog"></i></button>
+                    <div id="settingsMenu" class="dropdown-menu settings-menu">
+                        <div class="settings-section">
+                            <h4>Editor Settings</h4>
+                            <div class="setting-item">
+                                <label>Font Size:</label>
+                                <select id="fontSizeSelect">
+                                    <option value="12">12px</option>
+                                    <option value="14" selected>14px</option>
+                                    <option value="16">16px</option>
+                                    <option value="18">18px</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label>Tab Size:</label>
+                                <select id="tabSizeSelect">
+                                    <option value="2" selected>2 spaces</option>
+                                    <option value="4">4 spaces</option>
+                                    <option value="8">8 spaces</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="lineWrapToggle" checked> Line Wrapping
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="autoCompleteToggle" checked> Auto Complete
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h4>Display</h4>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="minimapToggle"> Show Minimap (VS Code Mode)
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="lineNumbersToggle" checked> Line Numbers
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <button id="loginBtn" class="btn-primary" style="display: none;" title="Login to your account"><i class="fas fa-sign-in-alt"></i> Login</button>
                 <button id="signupBtn" class="btn-secondary" style="display: none;" title="Create new account"><i class="fas fa-user-plus"></i> Sign Up</button>
                 <div class="profile-dropdown" style="display: none;">
@@ -470,17 +517,8 @@
             window.location.href = 'signup.html';
         };
         
-        // Profile dropdown toggle
-        document.getElementById('profileBtn').onclick = (e) => {
-            e.stopPropagation();
-            const menu = document.getElementById('profileMenu');
-            menu.classList.toggle('show');
-        };
-        
-        // Close dropdown when clicking outside
-        document.addEventListener('click', () => {
-            document.getElementById('profileMenu').classList.remove('show');
-        });
+        // Profile dropdown is now handled in setupThemeAndSettings
     </script>
+    <div id="dropdownBlurOverlay" class="dropdown-blur-overlay"></div>
     </body>
     </html>
