@@ -21,9 +21,28 @@
                 <div class="notifications-dropdown" style="display: none;">
                     <button id="notificationsBtn" class="btn-icon" title="Notifications"><i class="fas fa-bell"></i><span id="notificationBadge" class="notification-badge" style="display: none;">0</span></button>
                     <div id="notificationsMenu" class="dropdown-menu notifications-menu">
+                        <div id="friendRequestsSection">
+                            <h4>Friend Requests</h4>
+                            <div id="friendRequestsList" class="friend-requests-list">
+                                <p class="no-requests">No friend requests</p>
+                            </div>
+                        </div>
                         <h4>Shared Code</h4>
                         <div id="notificationsList" class="notifications-list">
                             <p class="no-notifications">No shared code yet</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="friends-dropdown" style="display: none;">
+                    <button id="friendsBtn" class="btn-icon" title="Friends"><i class="fas fa-users"></i></button>
+                    <div id="friendsMenu" class="dropdown-menu friends-menu">
+                        <h4>Friends</h4>
+                        <div class="friends-actions">
+                            <button id="addFriendBtn" class="btn-primary"><i class="fas fa-user-plus"></i> Add Friend</button>
+                            <button id="makeCommunityBtn" class="btn-secondary"><i class="fas fa-users"></i> Make Community</button>
+                        </div>
+                        <div id="friendsList" class="friends-list">
+                            <p class="no-friends">No friends added yet</p>
                         </div>
                     </div>
                 </div>
@@ -347,7 +366,7 @@
                 <button id="cancelSwitch" class="btn-secondary" title="Cancel language switch">Cancel</button>
             </div>
         </div>
-    </div>v>
+    </div>
     
     <!-- Username Modal -->
     <div id="usernameModal" class="modal">
@@ -498,6 +517,16 @@
                         username: username,
                         photoURL: user.photoURL || `https://via.placeholder.com/40/007acc/ffffff?text=${(user.displayName || user.email).charAt(0).toUpperCase()}`
                     };
+                    
+                    // Update user data in users collection (in case it's missing)
+                    database.ref(`users/${user.uid}`).update({
+                        email: user.email,
+                        displayName: user.displayName || user.email.split('@')[0],
+                        username: username,
+                        photoURL: user.photoURL || null,
+                        lastLogin: firebase.database.ServerValue.TIMESTAMP
+                    });
+                    
                     updateUIForLoggedInUser();
                     loadUserCode();
                     setTimeout(() => loadCollaborationSession(), 1000);
@@ -513,6 +542,7 @@
             document.getElementById('signupBtn').style.display = 'none';
             document.querySelector('.profile-dropdown').style.display = 'block';
             document.querySelector('.notifications-dropdown').style.display = 'block';
+            document.querySelector('.friends-dropdown').style.display = 'block';
             document.getElementById('profileName').textContent = window.currentUser.displayName;
             document.getElementById('profileEmail').textContent = window.currentUser.email;
             document.getElementById('profileUsername').textContent = '@' + window.currentUser.username;
@@ -542,6 +572,7 @@
             document.getElementById('signupBtn').style.display = 'block';
             document.querySelector('.profile-dropdown').style.display = 'none';
             document.querySelector('.notifications-dropdown').style.display = 'none';
+            document.querySelector('.friends-dropdown').style.display = 'none';
             
             // Update save button for non-logged in user
             const saveBtn = document.getElementById('saveCode');
@@ -638,8 +669,16 @@
             input.focus();
             input.select();
             
+            // Close modal when clicking outside
+            modal.onclick = (e) => {
+                if (e.target === modal && isChange) {
+                    modal.style.display = 'none';
+                }
+            };
+            
             input.oninput = () => {
-                const username = input.value.trim();
+                const username = input.value.trim().toLowerCase();
+                input.value = username;
                 clearTimeout(usernameCheckTimeout);
                 
                 if (username.length < 3) {
@@ -649,8 +688,8 @@
                     return;
                 }
                 
-                if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-                    status.innerHTML = '<i class="fas fa-times-circle"></i> Only letters, numbers, and underscores allowed';
+                if (!/^[a-z0-9_]+$/.test(username)) {
+                    status.innerHTML = '<i class="fas fa-times-circle"></i> Only lowercase letters, numbers, and underscores allowed';
                     status.className = 'username-status unavailable';
                     confirmBtn.disabled = true;
                     return;
@@ -666,7 +705,7 @@
             };
             
             confirmBtn.onclick = () => {
-                const username = input.value.trim();
+                const username = input.value.trim().toLowerCase();
                 if (username && !confirmBtn.disabled) {
                     saveUsername(user, username);
                 }
@@ -699,6 +738,15 @@
             
             updates[`usernames/${user.uid}`] = username;
             updates[`usernameToUid/${username}`] = user.uid;
+            
+            // Store user data in users collection for friend search
+            updates[`users/${user.uid}`] = {
+                email: user.email,
+                displayName: user.displayName || user.email.split('@')[0],
+                username: username,
+                photoURL: user.photoURL || null,
+                createdAt: firebase.database.ServerValue.TIMESTAMP
+            };
             
             // Remove old username mapping if changing username
             if (oldUsername && oldUsername !== username) {
@@ -804,10 +852,24 @@
             
             database.ref(`sharedCodes/${recipientUid}`).push(shareData).then(() => {
                 document.getElementById('shareCodeModal').style.display = 'none';
+                const recipientUsername = document.getElementById('shareToInput').value.trim();
                 document.getElementById('shareToInput').value = '';
-                alert('Code shared successfully!');
+                
+                // Get recipient email for friend request
+                database.ref(`usernameToUid/${recipientUsername}`).once('value', (snapshot) => {
+                    const uid = snapshot.val();
+                    if (uid) {
+                        database.ref(`usernames/${uid}`).once('value', (userSnapshot) => {
+                            // For now, we'll use username as email placeholder
+                            // In a real app, you'd store email separately
+                            showCodeShareSuccessModal(recipientUsername + '@example.com');
+                        });
+                    }
+                });
+                
+                showNotification('Code shared successfully!');
             }).catch((error) => {
-                alert('Error sharing code: ' + error.message);
+                showNotification('Error sharing code: ' + error.message, 'error');
             });
         }
         
@@ -873,6 +935,9 @@
         // Make viewSharedCode globally accessible
         window.viewSharedCode = viewSharedCode;
         
+        // Make showCodeShareSuccessModal globally accessible
+        window.showCodeShareSuccessModal = showCodeShareSuccessModal;
+        
         // Shared Code Modal Handlers
         document.getElementById('loadSharedCode').onclick = () => {
             if (currentSharedCode && window.editor) {
@@ -923,6 +988,170 @@
         
         // Profile dropdown is now handled in setupThemeAndSettings
     </script>
+    
+    <!-- Add Friend Modal -->
+    <div id="addFriendModal" class="modal">
+        <div class="modal-content">
+            <h2>Add Friend</h2>
+            <div class="form-group">
+                <label for="friendEmailInput">Username:</label>
+                <input type="text" id="friendEmailInput" placeholder="Enter username">
+                <div id="friendSearchStatus" class="friend-search-status"></div>
+            </div>
+            <div class="modal-actions">
+                <button id="sendFriendRequest" class="btn-primary">Send Request</button>
+                <button id="cancelAddFriend" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Friend Chat Modal -->
+    <div id="friendChatModal" class="modal friend-chat-modal">
+        <div class="modal-content friend-chat-content">
+            <div class="chat-header">
+                <div class="friend-info">
+                    <img id="chatFriendAvatar" src="" alt="Friend" class="chat-friend-avatar">
+                    <div>
+                        <h3 id="chatFriendName">Friend Name</h3>
+                        <span id="chatFriendStatus" class="friend-status">Online</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="pinFriendChat" class="btn-icon"><i class="fas fa-thumbtack"></i></button>
+                    <button id="friendMenuBtn" class="btn-icon"><i class="fas fa-ellipsis-v"></i></button>
+                    <button id="closeFriendChat" class="btn-icon"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div id="friendChatMessages" class="friend-chat-messages"></div>
+            <div class="friend-chat-input">
+                <input type="text" id="friendMessageInput" placeholder="Type a message...">
+                <button id="sendFriendMessage" class="btn-primary"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Code Share Success Modal -->
+    <div id="codeShareSuccessModal" class="modal">
+        <div class="modal-content">
+            <h2>Code Shared Successfully!</h2>
+            <p>Your code has been sent. Would you like to add this user to your friends list?</p>
+            <div class="form-group">
+                <label>Recipient:</label>
+                <span id="shareRecipientEmail"></span>
+            </div>
+            <div class="modal-actions">
+                <button id="addRecipientAsFriend" class="btn-primary">Add as Friend</button>
+                <button id="skipAddFriend" class="btn-secondary">Skip</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="dropdownBlurOverlay" class="dropdown-blur-overlay"></div>
+
+    <!-- Make Community Modal -->
+    <div id="makeCommunityModal" class="modal">
+        <div class="modal-content">
+            <h2>Create Community</h2>
+            <div class="form-group">
+                <label for="communityNameInput">Community Name (emojis allowed):</label>
+                <input type="text" id="communityNameInput" placeholder="Enter community name... 🚀">
+            </div>
+            <div class="form-group">
+                <label>Select Friends:</label>
+                <div id="friendsSelectionList" class="friends-selection-list">
+                    <p class="no-friends">Loading friends...</p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="createCommunity" class="btn-primary">Create Community</button>
+                <button id="cancelCommunity" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Community Chat Modal -->
+    <div id="communityChatModal" class="modal community-chat-modal">
+        <div class="modal-content community-chat-content">
+            <div class="chat-header">
+                <div class="community-info">
+                    <h3 id="communityName">Community Name</h3>
+                    <span id="communityMemberCount" class="community-member-count">0 members</span>
+                </div>
+                <div class="header-actions">
+                    <button id="pinCommunityChat" class="btn-icon"><i class="fas fa-thumbtack"></i></button>
+                    <button id="communityMenuBtn" class="btn-icon"><i class="fas fa-ellipsis-v"></i></button>
+                    <button id="closeCommunityChat" class="btn-icon"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div id="communityChatMessages" class="community-chat-messages"></div>
+            <div class="community-chat-input">
+                <div id="adminOnlyLabel" class="admin-only-label" style="display: none;">Only admins can message</div>
+                <input type="text" id="communityMessageInput" placeholder="Type a message...">
+                <button id="sendCommunityMessage" class="btn-primary"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Community Settings Modal -->
+    <div id="communitySettingsModal" class="modal">
+        <div class="modal-content">
+            <h2 id="communitySettingsTitle">Community Settings</h2>
+            
+            <!-- Security Settings -->
+            <div class="community-security-settings">
+                <h3>Security Settings</h3>
+                <div class="setting-item">
+                    <label>Who can message:</label>
+                    <select id="messagingPermission">
+                        <option value="everyone">Everyone</option>
+                        <option value="admins">Admins Only</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="communityMembersList" class="community-members-list"></div>
+            <div class="modal-actions">
+                <button id="leaveCommunity" class="btn-danger">Leave Community</button>
+                <button id="deleteCommunity" class="btn-danger" style="display: none;">Delete Community</button>
+                <button id="closeCommunitySettings" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Member Actions Dropdown -->
+    <div id="memberActionsDropdown" class="member-actions-dropdown" style="display: none;">
+        <div class="dropdown-item" onclick="makeAdmin()">Make Admin</div>
+        <div class="dropdown-item" onclick="removeMember()">Remove Member</div>
+    </div>
+    
+    <!-- Friend Info Modal -->
+    <div id="friendInfoModal" class="modal">
+        <div class="modal-content">
+            <h2>Friend Information</h2>
+            <div class="friend-info-details">
+                <div class="info-item">
+                    <label>Name:</label>
+                    <span id="friendInfoName"></span>
+                </div>
+                <div class="info-item">
+                    <label>Email:</label>
+                    <span id="friendInfoEmail"></span>
+                </div>
+                <div class="info-item">
+                    <label>Username:</label>
+                    <span id="friendInfoUsername"></span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="removeFriend" class="btn-danger">Remove Friend</button>
+                <button id="closeFriendInfo" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pinned Chat Widget -->
+    <div id="pinnedChatWidget" class="pinned-chat-widget" style="display: none;">
+        <div class="pinned-chat-avatar"></div>
+        <div class="pinned-chat-name"></div>
+    </div>
     </body>
     </html>

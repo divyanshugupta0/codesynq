@@ -323,8 +323,22 @@ function setupProfile() {
                 console.log('User just logged in, attempting to restore content');
                 window.currentUser = user;
                 
+                // Show notifications and friends dropdowns
+                document.querySelector('.notifications-dropdown').style.display = 'inline-block';
+                document.querySelector('.friends-dropdown').style.display = 'inline-block';
+                
                 // Load user preferences from Firebase with delay
                 setTimeout(() => loadUserPreferences(), 1000);
+                
+                // Set user online status
+                setTimeout(() => setUserOnline(), 500);
+                
+                // Load friend requests
+                setTimeout(() => {
+                    if (typeof loadFriendRequests === 'function') {
+                        loadFriendRequests();
+                    }
+                }, 1500);
                 
                 // Restore content immediately
                 setTimeout(() => {
@@ -336,11 +350,27 @@ function setupProfile() {
                 console.log('User logged out, saving content');
                 saveEditorContent();
                 window.currentUser = null;
+                
+                // Hide notifications and friends dropdowns
+                document.querySelector('.notifications-dropdown').style.display = 'none';
+                document.querySelector('.friends-dropdown').style.display = 'none';
             } else if (user) {
                 console.log('User already logged in');
                 window.currentUser = user;
+                
+                // Show notifications and friends dropdowns
+                document.querySelector('.notifications-dropdown').style.display = 'inline-block';
+                document.querySelector('.friends-dropdown').style.display = 'inline-block';
+                
                 // Load preferences for already logged-in users
                 setTimeout(() => loadUserPreferences(), 500);
+                setUserOnline();
+                // Load friend requests for already logged-in users
+                setTimeout(() => {
+                    if (typeof loadFriendRequests === 'function') {
+                        loadFriendRequests();
+                    }
+                }, 1000);
             } else {
                 console.log('No user, no previous user');
             }
@@ -695,6 +725,13 @@ function setupUI() {
     });
     
     console.log('UI event listeners setup complete');
+    
+    // Initialize friend system
+    setTimeout(() => {
+        if (document.getElementById('addFriendBtn')) {
+            setupFriendSystem();
+        }
+    }, 100);
 }
 
 let monacoEditor = null;
@@ -879,6 +916,7 @@ function setupThemeAndSettings() {
     const blurOverlay = document.getElementById('dropdownBlurOverlay');
     const dropdowns = {
         notifications: { btn: document.getElementById('notificationsBtn'), menu: document.getElementById('notificationsMenu') },
+        friends: { btn: document.getElementById('friendsBtn'), menu: document.getElementById('friendsMenu') },
         theme: { btn: document.getElementById('themeToggle'), menu: document.getElementById('themeMenu') },
         layout: { btn: document.getElementById('layoutBtn'), menu: document.getElementById('layoutMenu') },
         settings: { btn: document.getElementById('settingsBtn'), menu: document.getElementById('settingsMenu') },
@@ -887,7 +925,10 @@ function setupThemeAndSettings() {
     
     function closeAllDropdowns() {
         Object.values(dropdowns).forEach(dropdown => {
-            if (dropdown.menu) dropdown.menu.classList.remove('show');
+            if (dropdown.menu) {
+                dropdown.menu.classList.remove('show');
+                dropdown.menu.parentElement.classList.remove('show');
+            }
         });
         if (blurOverlay) blurOverlay.classList.remove('show');
     }
@@ -895,6 +936,7 @@ function setupThemeAndSettings() {
     function openDropdown(menu) {
         closeAllDropdowns();
         menu.classList.add('show');
+        menu.parentElement.classList.add('show');
         if (blurOverlay) blurOverlay.classList.add('show');
     }
     
@@ -903,6 +945,15 @@ function setupThemeAndSettings() {
         dropdowns.notifications.btn.addEventListener('click', function(e) {
             e.stopPropagation();
             openDropdown(dropdowns.notifications.menu);
+        });
+    }
+    
+    // Friends dropdown
+    if (dropdowns.friends.btn && dropdowns.friends.menu) {
+        dropdowns.friends.btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(dropdowns.friends.menu);
+            loadFriendsList();
         });
     }
     
@@ -2843,13 +2894,24 @@ function updateUserList(users) {
         const userItem = document.createElement('div');
         userItem.className = 'user-item';
         
-        userItem.innerHTML = `
-            <img src="${user.profilePic}" alt="${user.username}" class="user-avatar">
-            <div class="user-info">
-                <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
-                <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
-            </div>
-        `;
+        if (user.profilePic) {
+            userItem.innerHTML = `
+                <img src="${user.profilePic}" alt="${user.username}" class="user-avatar">
+                <div class="user-info">
+                    <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
+                    <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
+                </div>
+            `;
+        } else {
+            const avatar = createCustomAvatar(user.username, 36);
+            userItem.appendChild(avatar);
+            userItem.innerHTML += `
+                <div class="user-info">
+                    <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
+                    <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
+                </div>
+            `;
+        }
         
         userList.appendChild(userItem);
     });
@@ -3159,4 +3221,1253 @@ function getLocalComplexity(code, language) {
     }
     
     return { time: timeComplexity, space: spaceComplexity };
+}
+
+// Create custom avatar with user initials
+function createCustomAvatar(username, size = 36) {
+    const initials = username.charAt(0).toUpperCase();
+    const div = document.createElement('div');
+    div.className = size === 40 ? 'chat-friend-avatar' : (size === 36 ? 'user-avatar' : 'request-avatar');
+    div.textContent = initials;
+    div.style.fontSize = size === 40 ? '16px' : '14px';
+    return div;
+}
+
+// Friend System Functions
+let currentChatFriend = null;
+
+function setupFriendSystem() {
+    // Add Friend button
+    document.getElementById('addFriendBtn').addEventListener('click', () => {
+        document.getElementById('addFriendModal').style.display = 'block';
+        document.getElementById('friendEmailInput').focus();
+    });
+    
+    // Make Community button
+    document.getElementById('makeCommunityBtn').addEventListener('click', () => {
+        loadFriendsForCommunity();
+        document.getElementById('makeCommunityModal').style.display = 'block';
+        document.getElementById('communityNameInput').focus();
+    });
+    
+    // Cancel Add Friend
+    document.getElementById('cancelAddFriend').addEventListener('click', () => {
+        document.getElementById('addFriendModal').style.display = 'none';
+        document.getElementById('friendEmailInput').value = '';
+        document.getElementById('friendSearchStatus').textContent = '';
+        document.getElementById('sendFriendRequest').disabled = false;
+    });
+    
+    // Send Friend Request
+    document.getElementById('sendFriendRequest').addEventListener('click', sendFriendRequest);
+    
+    // Friend Chat Modal
+    document.getElementById('closeFriendChat').addEventListener('click', () => {
+        document.getElementById('friendChatModal').style.display = 'none';
+        currentChatFriend = null;
+    });
+    
+    // Pin Friend Chat
+    document.getElementById('pinFriendChat').addEventListener('click', togglePinFriendChat);
+    
+    // Friend Menu
+    document.getElementById('friendMenuBtn').addEventListener('click', showFriendInfo);
+    
+    // Send Friend Message
+    document.getElementById('sendFriendMessage').addEventListener('click', sendFriendMessage);
+    document.getElementById('friendMessageInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendFriendMessage();
+        }
+    });
+    
+    // Code Share Success Modal
+    document.getElementById('addRecipientAsFriend').addEventListener('click', addRecipientAsFriend);
+    document.getElementById('skipAddFriend').addEventListener('click', () => {
+        document.getElementById('codeShareSuccessModal').style.display = 'none';
+    });
+    
+    // Community modal handlers
+    document.getElementById('cancelCommunity').addEventListener('click', () => {
+        document.getElementById('makeCommunityModal').style.display = 'none';
+        document.getElementById('communityNameInput').value = '';
+    });
+    
+    document.getElementById('createCommunity').addEventListener('click', createCommunity);
+    
+    // Community Chat Modal
+    document.getElementById('closeCommunityChat').addEventListener('click', () => {
+        document.getElementById('communityChatModal').style.display = 'none';
+        currentCommunity = null;
+    });
+    
+    // Pin Community Chat
+    document.getElementById('pinCommunityChat').addEventListener('click', togglePinCommunityChat);
+    
+    // Community Menu
+    document.getElementById('communityMenuBtn').addEventListener('click', () => {
+        showCommunitySettings();
+    });
+    
+    // Community Settings Modal
+    document.getElementById('closeCommunitySettings').addEventListener('click', () => {
+        document.getElementById('communitySettingsModal').style.display = 'none';
+    });
+    
+    document.getElementById('leaveCommunity').addEventListener('click', leaveCommunity);
+    document.getElementById('deleteCommunity').addEventListener('click', deleteCommunity);
+    
+    // Messaging permission change
+    document.getElementById('messagingPermission').addEventListener('change', updateMessagingPermission);
+    
+    // Close member actions dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.member-actions-dropdown') && !e.target.closest('.member-menu-btn')) {
+            document.getElementById('memberActionsDropdown').style.display = 'none';
+        }
+    });
+    
+    // Send Community Message
+    document.getElementById('sendCommunityMessage').addEventListener('click', sendCommunityMessage);
+    document.getElementById('communityMessageInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendCommunityMessage();
+        }
+    });
+    
+    // Load friend requests when user logs in
+    if (window.currentUser) {
+        loadFriendRequests();
+        loadUserCommunities();
+    }
+    
+    // Setup draggable pinned chat widget
+    setupPinnedChatWidget();
+    
+    // Load friend requests immediately
+    loadFriendRequests();
+    
+    // Friend Info Modal
+    document.getElementById('closeFriendInfo').addEventListener('click', () => {
+        document.getElementById('friendInfoModal').style.display = 'none';
+    });
+    
+    document.getElementById('removeFriend').addEventListener('click', removeFriendFromChat);
+}
+
+function sendFriendRequest() {
+    const input = document.getElementById('friendEmailInput').value.trim();
+    const statusEl = document.getElementById('friendSearchStatus');
+    const sendBtn = document.getElementById('sendFriendRequest');
+    
+    if (!input) {
+        statusEl.textContent = 'Please enter a username';
+        statusEl.className = 'friend-search-status error';
+        return;
+    }
+    
+    if (input.includes('@')) {
+        statusEl.textContent = 'Please enter username only, not email';
+        statusEl.className = 'friend-search-status error';
+        return;
+    }
+    
+    if (input === window.currentUser.username) {
+        statusEl.textContent = 'You cannot add yourself as a friend';
+        statusEl.className = 'friend-search-status error';
+        return;
+    }
+    
+    statusEl.textContent = 'Searching...';
+    statusEl.className = 'friend-search-status loading';
+    sendBtn.disabled = true;
+    
+    database.ref(`usernameToUid/${input}`).once('value', (snapshot) => {
+        const uid = snapshot.val();
+        if (uid) {
+            database.ref(`users/${uid}`).once('value', (userSnapshot) => {
+                if (userSnapshot.exists()) {
+                    sendFriendRequestToUser(uid, userSnapshot.val(), statusEl, sendBtn);
+                } else {
+                    statusEl.textContent = 'Username not found';
+                    statusEl.className = 'friend-search-status error';
+                    sendBtn.disabled = false;
+                }
+            });
+        } else {
+            statusEl.textContent = 'Username not found';
+            statusEl.className = 'friend-search-status error';
+            sendBtn.disabled = false;
+        }
+    });
+}
+
+function sendFriendRequestToUser(uid, userData, statusEl, sendBtn) {
+    statusEl.textContent = 'User found! Sending request...';
+    statusEl.className = 'friend-search-status success';
+    
+    // Check if already friends or request exists
+    database.ref(`friends/${window.currentUser.uid}/${uid}`).once('value', (friendCheck) => {
+        if (friendCheck.exists()) {
+            statusEl.textContent = 'Already in friends list';
+            statusEl.className = 'friend-search-status error';
+            sendBtn.disabled = false;
+            return;
+        }
+        
+        database.ref(`friendRequests/${uid}/${window.currentUser.uid}`).once('value', (requestCheck) => {
+            if (requestCheck.exists()) {
+                statusEl.textContent = 'Friend request already sent';
+                statusEl.className = 'friend-search-status error';
+                sendBtn.disabled = false;
+                return;
+            }
+            
+            // Send friend request
+            const requestData = {
+                from: window.currentUser.uid,
+                fromName: window.currentUser.displayName || window.currentUser.email.split('@')[0],
+                fromEmail: window.currentUser.email,
+                fromPhoto: window.currentUser.photoURL || null,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            
+            database.ref(`friendRequests/${uid}/${window.currentUser.uid}`).set(requestData).then(() => {
+                document.getElementById('addFriendModal').style.display = 'none';
+                document.getElementById('friendEmailInput').value = '';
+                statusEl.textContent = '';
+                sendBtn.disabled = false;
+                showNotification('Friend request sent!');
+            }).catch((error) => {
+                console.error('Error sending friend request:', error);
+                statusEl.textContent = 'Error sending request';
+                statusEl.className = 'friend-search-status error';
+                sendBtn.disabled = false;
+            });
+        });
+    });
+}
+
+function loadFriendsList() {
+    if (!window.currentUser) return;
+    
+    loadUserCommunities();
+}
+
+function openFriendChat(friendUid, friendData) {
+    currentChatFriend = { uid: friendUid, ...friendData };
+    
+    // Update chat header
+    const chatAvatar = document.getElementById('chatFriendAvatar');
+    if (friendData.photoURL) {
+        chatAvatar.src = friendData.photoURL;
+        chatAvatar.style.display = 'block';
+    } else {
+        chatAvatar.style.display = 'none';
+        const customAvatar = createCustomAvatar(friendData.name, 40);
+        chatAvatar.parentNode.insertBefore(customAvatar, chatAvatar);
+    }
+    document.getElementById('chatFriendName').textContent = friendData.name;
+    // Get real online status from Firebase
+    getUserStatus(friendUid, (status) => {
+        document.getElementById('chatFriendStatus').textContent = status === 'online' ? 'Online' : 'Offline';
+        document.getElementById('chatFriendStatus').className = `friend-status ${status}`;
+    });
+    
+    // Load chat messages
+    loadFriendChatMessages(friendUid);
+    
+    // Show chat modal
+    document.getElementById('friendChatModal').style.display = 'block';
+    
+    // Close friends dropdown
+    document.getElementById('friendsMenu').classList.remove('show');
+    document.getElementById('dropdownBlurOverlay').classList.remove('show');
+}
+
+function loadFriendChatMessages(friendUid) {
+    const chatMessages = document.getElementById('friendChatMessages');
+    chatMessages.innerHTML = '';
+    
+    const chatId = [window.currentUser.uid, friendUid].sort().join('_');
+    
+    database.ref(`chats/${chatId}`).orderByChild('timestamp').on('value', (snapshot) => {
+        const messages = snapshot.val();
+        
+        if (!messages) {
+            chatMessages.innerHTML = '<p style="text-align: center; color: var(--text-secondary); font-style: italic;">No messages yet. Start the conversation!</p>';
+            return;
+        }
+        
+        const messageArray = Object.values(messages);
+        const lastMessage = messageArray[messageArray.length - 1];
+        
+        // Check if this is a new message from the friend and chat is pinned
+        if (lastMessage && lastMessage.from === friendUid && 
+            window.pinnedChatId === friendUid && window.pinnedChatType === 'friend' &&
+            document.getElementById('friendChatModal').style.display !== 'block') {
+            triggerPinnedChatAnimation();
+        }
+        
+        chatMessages.innerHTML = '';
+        messageArray.forEach(message => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `friend-message ${message.from === window.currentUser.uid ? 'own' : 'other'}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.textContent = message.text;
+            
+            const messageTime = document.createElement('div');
+            messageTime.className = 'message-time';
+            messageTime.textContent = new Date(message.timestamp).toLocaleTimeString();
+            
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(messageTime);
+            chatMessages.appendChild(messageDiv);
+        });
+        
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
+
+function sendFriendMessage() {
+    const input = document.getElementById('friendMessageInput');
+    const message = input.value.trim();
+    
+    if (!message || !currentChatFriend || !window.currentUser) return;
+    
+    const chatId = [window.currentUser.uid, currentChatFriend.uid].sort().join('_');
+    
+    const messageData = {
+        from: window.currentUser.uid,
+        to: currentChatFriend.uid,
+        text: message,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    database.ref(`chats/${chatId}`).push(messageData).then(() => {
+        input.value = '';
+        loadFriendChatMessages(currentChatFriend.uid);
+    }).catch((error) => {
+        showNotification('Error sending message: ' + error.message);
+    });
+}
+
+function showCodeShareSuccessModal(recipientEmail) {
+    document.getElementById('shareRecipientEmail').textContent = recipientEmail;
+    document.getElementById('codeShareSuccessModal').style.display = 'block';
+}
+
+// Make it globally accessible
+window.showCodeShareSuccessModal = showCodeShareSuccessModal;
+
+function addRecipientAsFriend() {
+    const recipientEmail = document.getElementById('shareRecipientEmail').textContent;
+    document.getElementById('friendEmailInput').value = recipientEmail;
+    document.getElementById('codeShareSuccessModal').style.display = 'none';
+    document.getElementById('addFriendModal').style.display = 'block';
+}
+
+function loadFriendRequests() {
+    if (!window.currentUser) return;
+    
+    database.ref(`friendRequests/${window.currentUser.uid}`).on('value', (snapshot) => {
+        const requests = snapshot.val();
+        const requestsList = document.getElementById('friendRequestsList');
+        const badge = document.getElementById('notificationBadge');
+        const requestsSection = document.getElementById('friendRequestsSection');
+        
+        requestsList.innerHTML = '';
+        
+        if (!requests) {
+            requestsSection.style.display = 'none';
+            badge.style.display = 'none';
+            return;
+        }
+        
+        const requestCount = Object.keys(requests).length;
+        
+        if (requestCount === 0) {
+            requestsSection.style.display = 'none';
+            badge.style.display = 'none';
+        } else {
+            requestsSection.style.display = 'block';
+            badge.textContent = requestCount;
+            badge.style.display = 'block';
+            
+            Object.entries(requests).forEach(([fromUid, requestData]) => {
+                const requestItem = document.createElement('div');
+                requestItem.className = 'friend-request-item';
+                
+                if (requestData.fromPhoto) {
+                    requestItem.innerHTML = `
+                        <img src="${requestData.fromPhoto}" alt="${requestData.fromName}" class="request-avatar">
+                        <div class="request-info">
+                            <div class="request-name">${requestData.fromName}</div>
+                            <div class="request-actions">
+                                <button onclick="acceptFriendRequest('${fromUid}', '${requestData.fromName}', '${requestData.fromEmail}', '${requestData.fromPhoto}')" class="btn-accept">Accept</button>
+                                <button onclick="rejectFriendRequest('${fromUid}')" class="btn-reject">Reject</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const avatar = createCustomAvatar(requestData.fromName, 36);
+                    requestItem.appendChild(avatar);
+                    requestItem.innerHTML += `
+                        <div class="request-info">
+                            <div class="request-name">${requestData.fromName}</div>
+                            <div class="request-actions">
+                                <button onclick="acceptFriendRequest('${fromUid}', '${requestData.fromName}', '${requestData.fromEmail}', '${requestData.fromPhoto}')" class="btn-accept">Accept</button>
+                                <button onclick="rejectFriendRequest('${fromUid}')" class="btn-reject">Reject</button>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                requestsList.appendChild(requestItem);
+            });
+        }
+    });
+}
+
+function acceptFriendRequest(fromUid, fromName, fromEmail, fromPhoto) {
+    // Add to both users' friends lists
+    const friendData1 = {
+        name: fromName,
+        email: fromEmail,
+        photoURL: fromPhoto,
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    const friendData2 = {
+        name: window.currentUser.displayName,
+        email: window.currentUser.email,
+        photoURL: window.currentUser.photoURL,
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    database.ref(`friends/${window.currentUser.uid}/${fromUid}`).set(friendData1, () => {
+        database.ref(`friends/${fromUid}/${window.currentUser.uid}`).set(friendData2, () => {
+            // Remove the friend request
+            database.ref(`friendRequests/${window.currentUser.uid}/${fromUid}`).remove();
+            showNotification(`You are now friends with ${fromName}!`);
+        });
+    });
+}
+
+function rejectFriendRequest(fromUid) {
+    database.ref(`friendRequests/${window.currentUser.uid}/${fromUid}`).remove();
+    showNotification('Friend request rejected');
+}
+
+window.acceptFriendRequest = acceptFriendRequest;
+window.rejectFriendRequest = rejectFriendRequest;
+
+// Community System Functions
+let currentCommunity = null;
+let selectedFriends = new Set();
+
+function loadFriendsForCommunity() {
+    if (!window.currentUser) return;
+    
+    const friendsList = document.getElementById('friendsSelectionList');
+    friendsList.innerHTML = '<p class="no-friends">Loading friends...</p>';
+    selectedFriends.clear();
+    
+    database.ref(`friends/${window.currentUser.uid}`).once('value', (snapshot) => {
+        const friends = snapshot.val();
+        friendsList.innerHTML = '';
+        
+        if (!friends) {
+            friendsList.innerHTML = '<p class="no-friends">No friends to add to community</p>';
+            return;
+        }
+        
+        Object.entries(friends).forEach(([friendUid, friendData]) => {
+            const friendItem = document.createElement('div');
+            friendItem.className = 'friend-selection-item';
+            friendItem.dataset.friendUid = friendUid;
+            
+            if (friendData.photoURL) {
+                friendItem.innerHTML = `
+                    <img src="${friendData.photoURL}" alt="${friendData.name}" class="friend-avatar">
+                    <div class="friend-info">
+                        <div class="friend-name">${friendData.name}</div>
+                    </div>
+                `;
+            } else {
+                const avatar = createCustomAvatar(friendData.name, 36);
+                friendItem.appendChild(avatar);
+                friendItem.innerHTML += `
+                    <div class="friend-info">
+                        <div class="friend-name">${friendData.name}</div>
+                    </div>
+                `;
+            }
+            
+            friendItem.addEventListener('click', () => {
+                if (selectedFriends.has(friendUid)) {
+                    selectedFriends.delete(friendUid);
+                    friendItem.classList.remove('selected');
+                } else {
+                    selectedFriends.add(friendUid);
+                    friendItem.classList.add('selected');
+                }
+            });
+            
+            friendsList.appendChild(friendItem);
+        });
+    });
+}
+
+function createCommunity() {
+    const communityName = document.getElementById('communityNameInput').value.trim();
+    
+    if (!communityName) {
+        showNotification('Please enter a community name');
+        return;
+    }
+    
+    if (selectedFriends.size === 0) {
+        showNotification('Please select at least one friend');
+        return;
+    }
+    
+    const communityId = 'community_' + Date.now();
+    const updates = {};
+    
+    // Add community to creator
+    updates[`userCommunities/${window.currentUser.uid}/${communityId}`] = {
+        name: communityName,
+        role: 'admin'
+    };
+    
+    // Add community to all selected friends
+    selectedFriends.forEach(friendUid => {
+        updates[`userCommunities/${friendUid}/${communityId}`] = {
+            name: communityName,
+            role: 'member'
+        };
+    });
+    
+    // Save community data
+    const members = [window.currentUser.uid, ...Array.from(selectedFriends)];
+    updates[`communities/${communityId}`] = {
+        name: communityName,
+        createdBy: window.currentUser.uid,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+        members: members
+    };
+    
+    database.ref().update(updates).then(() => {
+        document.getElementById('makeCommunityModal').style.display = 'none';
+        document.getElementById('communityNameInput').value = '';
+        selectedFriends.clear();
+        showNotification('Community created successfully!');
+    }).catch((error) => {
+        showNotification('Error creating community: ' + error.message);
+    });
+}
+
+
+
+function loadUserCommunities() {
+    if (!window.currentUser) return;
+    
+    database.ref(`userCommunities/${window.currentUser.uid}`).on('value', (snapshot) => {
+        const communities = snapshot.val();
+        updateFriendsListWithCommunities(communities);
+    });
+}
+
+function updateFriendsListWithCommunities(communities) {
+    const friendsList = document.getElementById('friendsList');
+    
+    database.ref(`friends/${window.currentUser.uid}`).once('value', (friendsSnapshot) => {
+        const friends = friendsSnapshot.val();
+        friendsList.innerHTML = '';
+        
+        if (communities) {
+            Object.entries(communities).forEach(([communityId, communityData]) => {
+                const communityItem = document.createElement('div');
+                communityItem.className = 'friend-item community-item';
+                communityItem.innerHTML = `
+                    <div class="friend-avatar" style="background: var(--accent-color); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                        <i class="fas fa-broadcast-tower"></i>
+                    </div>
+                    <div class="friend-info">
+                        <div class="friend-name">${communityData.name}</div>
+                        <div class="friend-status">Community • ${communityData.role}</div>
+                    </div>
+                `;
+                
+                communityItem.addEventListener('click', () => {
+                    openCommunityChat(communityId, communityData);
+                });
+                
+                friendsList.appendChild(communityItem);
+            });
+        }
+        
+        if (friends) {
+            Object.entries(friends).forEach(([friendUid, friendData]) => {
+                const friendItem = document.createElement('div');
+                friendItem.className = 'friend-item';
+                
+                if (friendData.photoURL) {
+                    friendItem.innerHTML = `
+                        <img src="${friendData.photoURL}" alt="${friendData.name}" class="friend-avatar">
+                        <div class="friend-info">
+                            <div class="friend-name">${friendData.name}</div>
+                            <div class="friend-status online">Online</div>
+                        </div>
+                    `;
+                } else {
+                    const avatar = createCustomAvatar(friendData.name, 36);
+                    friendItem.appendChild(avatar);
+                    friendItem.innerHTML += `
+                        <div class="friend-info">
+                            <div class="friend-name">${friendData.name}</div>
+                            <div class="friend-status online">Online</div>
+                        </div>
+                    `;
+                }
+                
+                friendItem.addEventListener('click', () => {
+                    openFriendChat(friendUid, friendData);
+                });
+                
+                // Check online status
+                getUserStatus(friendUid, (status) => {
+                    const statusEl = friendItem.querySelector('.friend-status');
+                    if (statusEl) {
+                        statusEl.textContent = status === 'online' ? 'Online' : 'Offline';
+                        statusEl.className = `friend-status ${status}`;
+                    }
+                });
+                
+                friendsList.appendChild(friendItem);
+            });
+        }
+        
+        if (!friends && !communities) {
+            friendsList.innerHTML = '<p class="no-friends">No friends or communities yet</p>';
+        }
+    });
+}
+
+function openCommunityChat(communityId, communityData) {
+    currentCommunity = { id: communityId, ...communityData };
+    
+    document.getElementById('communityName').textContent = communityData.name;
+    
+    database.ref(`communities/${communityId}`).once('value', (snapshot) => {
+        const fullCommunityData = snapshot.val();
+        const members = fullCommunityData.members;
+        const memberCount = members ? Object.keys(members).length : 0;
+        document.getElementById('communityMemberCount').textContent = `${memberCount} members`;
+        
+        // Check messaging permissions and update UI
+        const messagingPermission = fullCommunityData.messagingPermission || 'everyone';
+        const isAdmin = fullCommunityData.createdBy === window.currentUser.uid;
+        
+        const chatInput = document.getElementById('communityMessageInput');
+        const sendButton = document.getElementById('sendCommunityMessage');
+        const adminLabel = document.getElementById('adminOnlyLabel');
+        
+        if (messagingPermission === 'admins' && !isAdmin) {
+            chatInput.style.display = 'none';
+            sendButton.style.display = 'none';
+            adminLabel.style.display = 'block';
+        } else {
+            chatInput.style.display = 'block';
+            sendButton.style.display = 'block';
+            adminLabel.style.display = 'none';
+        }
+    });
+    
+    loadCommunityMessages(communityId);
+    document.getElementById('communityChatModal').style.display = 'block';
+    document.getElementById('friendsMenu').classList.remove('show');
+    document.getElementById('dropdownBlurOverlay').classList.remove('show');
+}
+
+function showCommunitySettings() {
+    if (!currentCommunity) return;
+    
+    document.getElementById('communitySettingsTitle').textContent = `${currentCommunity.name} Settings`;
+    
+    database.ref(`communities/${currentCommunity.id}`).once('value', (snapshot) => {
+        const communityData = snapshot.val();
+        if (!communityData) return;
+        
+        const isAdmin = communityData.createdBy === window.currentUser.uid;
+        
+        // Show delete button only for admins, leave button for everyone
+        document.getElementById('deleteCommunity').style.display = isAdmin ? 'inline-block' : 'none';
+        
+        // Load messaging permission setting
+        const messagingPermission = communityData.messagingPermission || 'everyone';
+        document.getElementById('messagingPermission').value = messagingPermission;
+        
+        // Show/hide messaging permission dropdown based on admin status
+        const securitySettings = document.querySelector('.community-security-settings');
+        securitySettings.style.display = isAdmin ? 'block' : 'none';
+        
+        loadCommunityMembers(currentCommunity.id, isAdmin);
+    });
+    
+    document.getElementById('communitySettingsModal').style.display = 'block';
+}
+
+function loadCommunityMembers(communityId, isAdmin) {
+    const membersList = document.getElementById('communityMembersList');
+    membersList.innerHTML = '<p>Loading members...</p>';
+    
+    database.ref(`communities/${communityId}`).once('value', (snapshot) => {
+        const communityData = snapshot.val();
+        if (!communityData || !communityData.members) return;
+        
+        membersList.innerHTML = '';
+        
+        Object.entries(communityData.members).forEach(([memberUid, memberData]) => {
+            const memberItem = document.createElement('div');
+            memberItem.className = 'member-item';
+            
+            // Check if member is in friends list
+            database.ref(`friends/${window.currentUser.uid}/${memberUid}`).once('value', (friendSnapshot) => {
+                const isFriend = friendSnapshot.exists();
+                const isCurrentUser = memberUid === window.currentUser.uid;
+                const memberIsAdmin = memberUid === communityData.createdBy;
+                
+                memberItem.innerHTML = `
+                    <div class="member-info">
+                        <div class="member-avatar" style="width: 36px; height: 36px; border-radius: 50%; background: var(--accent-color); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                            ${memberData.name ? memberData.name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                        <div>
+                            <div class="member-name">
+                                ${isCurrentUser ? 'You' : (memberData.name || 'Unknown')}
+                                ${memberIsAdmin ? '<span class="member-role">Admin</span>' : ''}
+                                ${isFriend ? '<span class="friend-label">Friend</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="member-actions">
+                        ${!isFriend && !isCurrentUser ? `<button class="btn-secondary" onclick="addMemberAsFriend('${memberUid}', '${memberData.name}')">Add Friend</button>` : ''}
+                        ${isAdmin && !isCurrentUser ? `
+                            <div class="member-menu">
+                                <button class="member-menu-btn" onclick="toggleMemberMenu('${memberUid}')">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                membersList.appendChild(memberItem);
+            });
+        });
+    });
+}
+
+let currentMemberUid = null;
+
+function toggleMemberMenu(memberUid) {
+    currentMemberUid = memberUid;
+    const dropdown = document.getElementById('memberActionsDropdown');
+    const button = event.target.closest('.member-menu-btn');
+    
+    if (dropdown.style.display === 'block' && currentMemberUid === memberUid) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    
+    // Position dropdown near the button
+    const rect = button.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = rect.bottom + 'px';
+    dropdown.style.left = (rect.left - 100) + 'px';
+    dropdown.style.display = 'block';
+}
+
+function makeAdmin() {
+    if (!currentMemberUid) return;
+    database.ref(`communities/${currentCommunity.id}/createdBy`).set(currentMemberUid);
+    showNotification('Admin role transferred!');
+    document.getElementById('memberActionsDropdown').style.display = 'none';
+    loadCommunityMembers(currentCommunity.id, false);
+}
+
+function removeMember() {
+    if (!currentMemberUid) return;
+    if (confirm('Remove this member from the community?')) {
+        const updates = {};
+        updates[`communities/${currentCommunity.id}/members/${currentMemberUid}`] = null;
+        updates[`userCommunities/${currentMemberUid}/${currentCommunity.id}`] = null;
+        
+        database.ref().update(updates).then(() => {
+            showNotification('Member removed!');
+            document.getElementById('memberActionsDropdown').style.display = 'none';
+            loadCommunityMembers(currentCommunity.id, true);
+        });
+    }
+}
+
+function updateMessagingPermission() {
+    const permission = document.getElementById('messagingPermission').value;
+    
+    database.ref(`communities/${currentCommunity.id}/messagingPermission`).set(permission).then(() => {
+        showNotification(`Messaging permission updated to: ${permission}`);
+        
+        // Update current chat UI if needed
+        if (document.getElementById('communityChatModal').style.display === 'block') {
+            openCommunityChat(currentCommunity.id, currentCommunity);
+        }
+    }).catch((error) => {
+        showNotification('Error updating permission: ' + error.message);
+    });
+}
+
+function addMemberAsFriend(memberUid, memberName) {
+    const friendData = {
+        name: memberName,
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    const myData = {
+        name: window.currentUser.displayName,
+        email: window.currentUser.email,
+        photoURL: window.currentUser.photoURL,
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    database.ref(`friends/${window.currentUser.uid}/${memberUid}`).set(friendData);
+    database.ref(`friends/${memberUid}/${window.currentUser.uid}`).set(myData);
+    
+    showNotification(`Added ${memberName} as friend!`);
+    loadCommunityMembers(currentCommunity.id, true);
+}
+
+
+
+function leaveCommunity() {
+    if (confirm('Are you sure you want to leave this community?')) {
+        database.ref(`communities/${currentCommunity.id}`).once('value', (snapshot) => {
+            const communityData = snapshot.val();
+            const isAdmin = communityData.createdBy === window.currentUser.uid;
+            const members = communityData.members || {};
+            const memberIds = Object.keys(members).filter(id => id !== window.currentUser.uid);
+            
+            const updates = {};
+            updates[`communities/${currentCommunity.id}/members/${window.currentUser.uid}`] = null;
+            updates[`userCommunities/${window.currentUser.uid}/${currentCommunity.id}`] = null;
+            
+            // If admin is leaving and there are other members, transfer admin to random member
+            if (isAdmin && memberIds.length > 0) {
+                const newAdminId = memberIds[Math.floor(Math.random() * memberIds.length)];
+                updates[`communities/${currentCommunity.id}/createdBy`] = newAdminId;
+            }
+            
+            database.ref().update(updates).then(() => {
+                document.getElementById('communitySettingsModal').style.display = 'none';
+                document.getElementById('communityChatModal').style.display = 'none';
+                showNotification(isAdmin && memberIds.length > 0 ? 'Left community! Admin transferred to another member.' : 'Left community!');
+                loadUserCommunities();
+            });
+        });
+    }
+}
+
+function deleteCommunity() {
+    if (confirm('Are you sure you want to delete this community? This action cannot be undone.')) {
+        database.ref(`communities/${currentCommunity.id}`).once('value', (snapshot) => {
+            const communityData = snapshot.val();
+            if (!communityData) return;
+            
+            const updates = {};
+            updates[`communities/${currentCommunity.id}`] = null;
+            updates[`communityChats/${currentCommunity.id}`] = null;
+            
+            // Remove from all members
+            Object.keys(communityData.members || {}).forEach(memberUid => {
+                updates[`userCommunities/${memberUid}/${currentCommunity.id}`] = null;
+            });
+            
+            database.ref().update(updates).then(() => {
+                document.getElementById('communitySettingsModal').style.display = 'none';
+                document.getElementById('communityChatModal').style.display = 'none';
+                showNotification('Community deleted!');
+                loadUserCommunities();
+            });
+        });
+    }
+}
+
+window.toggleMemberMenu = toggleMemberMenu;
+window.addMemberAsFriend = addMemberAsFriend;
+window.makeAdmin = makeAdmin;
+window.removeMember = removeMember;
+
+function loadCommunityMessages(communityId) {
+    const chatMessages = document.getElementById('communityChatMessages');
+    chatMessages.innerHTML = '';
+    
+    database.ref(`communityChats/${communityId}`).orderByChild('timestamp').limitToLast(50).on('value', (snapshot) => {
+        const messages = snapshot.val();
+        
+        if (!messages) {
+            chatMessages.innerHTML = '<p style="text-align: center; color: var(--text-secondary); font-style: italic;">No messages yet. Start the conversation!</p>';
+            return;
+        }
+        
+        const messageArray = Object.values(messages);
+        const lastMessage = messageArray[messageArray.length - 1];
+        
+        // Check if this is a new message from someone else and community is pinned
+        if (lastMessage && lastMessage.from !== window.currentUser.uid && 
+            window.pinnedChatId === communityId && window.pinnedChatType === 'community' &&
+            document.getElementById('communityChatModal').style.display !== 'block') {
+            triggerPinnedChatAnimation();
+        }
+        
+        chatMessages.innerHTML = '';
+        messageArray.forEach(message => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `community-message ${message.from === window.currentUser.uid ? 'own' : 'other'}`;
+            
+            const messageHeader = document.createElement('div');
+            messageHeader.className = 'community-message-header';
+            messageHeader.textContent = message.from === window.currentUser.uid ? 'You' : message.senderName;
+            
+            const messageContent = document.createElement('div');
+            messageContent.textContent = message.text;
+            
+            const messageTime = document.createElement('div');
+            messageTime.className = 'message-time';
+            messageTime.textContent = new Date(message.timestamp).toLocaleTimeString();
+            
+            if (message.from !== window.currentUser.uid) {
+                messageDiv.appendChild(messageHeader);
+            }
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(messageTime);
+            
+            chatMessages.appendChild(messageDiv);
+        });
+        
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
+
+function sendCommunityMessage() {
+    const input = document.getElementById('communityMessageInput');
+    const message = input.value.trim();
+    
+    if (!message || !currentCommunity || !window.currentUser) return;
+    
+    // Check messaging permissions
+    database.ref(`communities/${currentCommunity.id}`).once('value', (snapshot) => {
+        const communityData = snapshot.val();
+        const messagingPermission = communityData.messagingPermission || 'everyone';
+        const isAdmin = communityData.createdBy === window.currentUser.uid;
+        
+        if (messagingPermission === 'admins' && !isAdmin) {
+            showNotification('Only admins can send messages in this community');
+            return;
+        }
+        
+        const messageData = {
+            from: window.currentUser.uid,
+            senderName: window.currentUser.displayName,
+            text: message,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        };
+        
+        database.ref(`communityChats/${currentCommunity.id}`).push(messageData).then(() => {
+            input.value = '';
+        }).catch((error) => {
+            showNotification('Error sending message: ' + error.message);
+        });
+    });
+}
+
+// Pinned Chat Functionality
+let pinnedChat = null;
+
+function togglePinFriendChat() {
+    const pinBtn = document.getElementById('pinFriendChat');
+    
+    if (pinnedChat && pinnedChat.type === 'friend' && pinnedChat.id === currentChatFriend.uid) {
+        unpinChat();
+    } else {
+        pinChat('friend', currentChatFriend.uid, currentChatFriend.name);
+    }
+    
+    updatePinButton(pinBtn);
+}
+
+function togglePinCommunityChat() {
+    const pinBtn = document.getElementById('pinCommunityChat');
+    
+    if (pinnedChat && pinnedChat.type === 'community' && pinnedChat.id === currentCommunity.id) {
+        unpinChat();
+    } else {
+        pinChat('community', currentCommunity.id, currentCommunity.name);
+    }
+    
+    updatePinButton(pinBtn);
+}
+
+function pinChat(type, id, name) {
+    pinnedChat = { type, id, name };
+    window.pinnedChatId = id;
+    window.pinnedChatType = type;
+    
+    const widget = document.getElementById('pinnedChatWidget');
+    const avatar = widget.querySelector('.pinned-chat-avatar');
+    const nameEl = widget.querySelector('.pinned-chat-name');
+    
+    avatar.textContent = name.charAt(0).toUpperCase();
+    nameEl.textContent = name;
+    widget.style.display = 'flex';
+    
+    showNotification(`${name} pinned`);
+}
+
+function unpinChat() {
+    pinnedChat = null;
+    window.pinnedChatId = null;
+    window.pinnedChatType = null;
+    document.getElementById('pinnedChatWidget').style.display = 'none';
+    showNotification('Chat unpinned');
+}
+
+function updatePinButton(btn) {
+    if (pinnedChat) {
+        btn.classList.add('pinned');
+        btn.innerHTML = '<i class="fas fa-thumbtack"></i>';
+    } else {
+        btn.classList.remove('pinned');
+        btn.innerHTML = '<i class="fas fa-thumbtack"></i>';
+    }
+}
+
+function setupPinnedChatWidget() {
+    const widget = document.getElementById('pinnedChatWidget');
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+    
+    widget.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = parseInt(window.getComputedStyle(widget).left);
+        startTop = parseInt(window.getComputedStyle(widget).top);
+        widget.style.cursor = 'grabbing';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const newLeft = startLeft + e.clientX - startX;
+        const newTop = startTop + e.clientY - startY;
+        
+        widget.style.left = Math.max(0, Math.min(window.innerWidth - 60, newLeft)) + 'px';
+        widget.style.top = Math.max(0, Math.min(window.innerHeight - 60, newTop)) + 'px';
+        widget.style.right = 'auto';
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            widget.style.cursor = 'pointer';
+        }
+    });
+    
+    widget.addEventListener('click', (e) => {
+        if (!isDragging && pinnedChat) {
+            if (pinnedChat.type === 'friend') {
+                database.ref(`friends/${window.currentUser.uid}/${pinnedChat.id}`).once('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        openFriendChat(pinnedChat.id, snapshot.val());
+                    }
+                });
+            } else if (pinnedChat.type === 'community') {
+                database.ref(`userCommunities/${window.currentUser.uid}/${pinnedChat.id}`).once('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        openCommunityChat(pinnedChat.id, snapshot.val());
+                    }
+                });
+            }
+        }
+    });
+}
+
+// Friend Info Functions
+function showFriendInfo() {
+    if (!currentChatFriend) return;
+    
+    document.getElementById('friendInfoName').textContent = currentChatFriend.name || 'Unknown';
+    document.getElementById('friendInfoEmail').textContent = currentChatFriend.email || 'Not available';
+    // Get username from Firebase
+    database.ref(`usernames/${currentChatFriend.uid}`).once('value', (snapshot) => {
+        const username = snapshot.val();
+        document.getElementById('friendInfoUsername').textContent = username ? '@' + username : 'Not available';
+    });
+    
+    document.getElementById('friendInfoModal').style.display = 'block';
+}
+
+function removeFriendFromChat() {
+    if (!currentChatFriend || !confirm(`Remove ${currentChatFriend.name} from your friends list?`)) return;
+    
+    const updates = {};
+    updates[`friends/${window.currentUser.uid}/${currentChatFriend.uid}`] = null;
+    updates[`friends/${currentChatFriend.uid}/${window.currentUser.uid}`] = null;
+    
+    database.ref().update(updates).then(() => {
+        document.getElementById('friendInfoModal').style.display = 'none';
+        document.getElementById('friendChatModal').style.display = 'none';
+        showNotification(`${currentChatFriend.name} removed from friends`);
+        currentChatFriend = null;
+    }).catch((error) => {
+        showNotification('Error removing friend: ' + error.message);
+    });
+}
+
+// Pinned Chat Animation Function
+function triggerPinnedChatAnimation() {
+    const widget = document.getElementById('pinnedChatWidget');
+    const avatar = widget.querySelector('.pinned-chat-avatar');
+    
+    if (widget.style.display === 'flex') {
+        // Add wave animation to avatar
+        avatar.classList.add('wave');
+        
+        // Add glow animation to widget
+        widget.classList.add('new-message');
+        
+        // Remove animations after they complete
+        setTimeout(() => {
+            avatar.classList.remove('wave');
+            widget.classList.remove('new-message');
+        }, 1000);
+    }
+}
+
+// Store pinned chat info globally
+window.pinnedChatId = null;
+window.pinnedChatType = null;
+function loadFriendRequests() {
+    if (!window.currentUser) return;
+    
+    database.ref(`friendRequests/${window.currentUser.uid}`).on('value', (snapshot) => {
+        const requests = snapshot.val();
+        const requestsList = document.getElementById('friendRequestsList');
+        const badge = document.getElementById('notificationBadge');
+        const requestsSection = document.getElementById('friendRequestsSection');
+        
+        if (!requestsList) return;
+        
+        requestsList.innerHTML = '';
+        
+        if (!requests || Object.keys(requests).length === 0) {
+            requestsList.innerHTML = '<p class="no-requests">No friend requests</p>';
+            if (badge) badge.style.display = 'none';
+            return;
+        }
+        
+        const requestCount = Object.keys(requests).length;
+        if (badge) {
+            badge.textContent = requestCount;
+            badge.style.display = 'block';
+        }
+        
+        Object.entries(requests).forEach(([fromUid, requestData]) => {
+            const requestItem = document.createElement('div');
+            requestItem.className = 'friend-request-item';
+            requestItem.innerHTML = `
+                <div class="request-avatar" style="width: 36px; height: 36px; border-radius: 50%; background: var(--accent-color); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${requestData.fromName.charAt(0).toUpperCase()}</div>
+                <div class="request-info">
+                    <div class="request-name">${requestData.fromName}</div>
+                    <div class="request-actions">
+                        <button onclick="acceptFriendRequest('${fromUid}', '${requestData.fromName}', '${requestData.fromEmail}', '${requestData.fromPhoto || ''}')" class="btn-accept">Accept</button>
+                        <button onclick="rejectFriendRequest('${fromUid}')" class="btn-reject">Reject</button>
+                    </div>
+                </div>
+            `;
+            requestsList.appendChild(requestItem);
+        });
+    });
+}
+// Set user online status when they login
+function setUserOnline() {
+    if (!window.currentUser) return;
+    
+    database.ref(`users/${window.currentUser.uid}/status`).set({
+        online: true,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    });
+    
+    // Set offline when user disconnects
+    database.ref(`users/${window.currentUser.uid}/status`).onDisconnect().set({
+        online: false,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+// Get user online status
+function getUserStatus(userId, callback) {
+    database.ref(`users/${userId}/status`).on('value', (snapshot) => {
+        const status = snapshot.val();
+        if (status) {
+            callback(status.online ? 'online' : 'offline');
+        } else {
+            callback('offline');
+        }
+    });
+}
+
+// Set user online status when they login
+function setUserOnline() {
+    if (!window.currentUser || typeof database === 'undefined') return;
+    
+    console.log('Setting user online:', window.currentUser.uid);
+    
+    database.ref(`users/${window.currentUser.uid}/status`).set({
+        online: true,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    }).then(() => {
+        console.log('User status set to online successfully');
+    }).catch(error => {
+        console.error('Error setting online status:', error);
+    });
+    
+    // Set offline when user disconnects
+    database.ref(`users/${window.currentUser.uid}/status`).onDisconnect().set({
+        online: false,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+// Get user online status
+function getUserStatus(userId, callback) {
+    if (typeof database === 'undefined') {
+        callback('offline');
+        return;
+    }
+    
+    database.ref(`users/${userId}/status`).once('value', (snapshot) => {
+        const status = snapshot.val();
+        console.log('User status for', userId, ':', status);
+        if (status && status.online) {
+            callback('online');
+        } else {
+            callback('offline');
+        }
+    }).catch(error => {
+        console.error('Error getting user status:', error);
+        callback('offline');
+    });
 }
