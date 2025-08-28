@@ -646,6 +646,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .btn-icon:hover {
@@ -700,9 +701,16 @@ body {
     margin-bottom: 0.25rem;
 }
 
-.profile-info span:last-child {
+.profile-info span:nth-child(2) {
     font-size: 0.8rem;
     color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.profile-info span:last-child {
+    font-size: 0.85rem;
+    color: var(--accent-color);
+    font-weight: 500;
 }
 
 .dropdown-menu button {
@@ -718,10 +726,21 @@ body {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.9rem;
+    margin-bottom: 0.5rem;
 }
 
 .dropdown-menu button:hover {
     background: var(--danger-color);
+    color: white;
+}
+
+#changeUsernameBtn {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+#changeUsernameBtn:hover {
+    background: var(--primary-color);
     color: white;
 }
 
@@ -1337,7 +1356,8 @@ body {
 .theme-dropdown,
 .layout-dropdown,
 .settings-dropdown,
-.profile-dropdown {
+.profile-dropdown,
+.notifications-dropdown {
     position: relative;
     display: inline-block;
     z-index: 1001;
@@ -1538,6 +1558,136 @@ body {
 
 .collaboration-toggle.panel-open {
     right: 350px;
+}
+
+/* Username Modal */
+.username-status {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 20px;
+}
+
+.username-status.checking {
+    color: var(--warning-color);
+}
+
+.username-status.available {
+    color: var(--accent-color);
+}
+
+.username-status.unavailable {
+    color: var(--danger-color);
+}
+
+.username-status i {
+    font-size: 0.8rem;
+}
+
+#usernameModal .modal-content {
+    max-width: 450px;
+}
+
+#usernameModal .form-group input {
+    font-size: 1rem;
+    padding: 0.75rem;
+}
+
+#usernameModal .modal-actions {
+    justify-content: center;
+}
+
+/* Notification System */
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--danger-color);
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.notifications-menu {
+    width: 300px;
+    max-height: 400px;
+    padding: 1rem;
+}
+
+.notifications-menu h4 {
+    margin-bottom: 1rem;
+    color: var(--accent-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.notifications-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.notification-item:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-color);
+}
+
+.notification-sender {
+    font-weight: 600;
+    color: var(--accent-color);
+    margin-bottom: 0.25rem;
+}
+
+.notification-preview {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notification-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.no-notifications {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 2rem;
+}
+
+.notification-item.unread {
+    background: var(--bg-primary);
+    border-color: var(--accent-color);
+}
+
+.notification-item.read {
+    opacity: 0.7;
+}
+
+.unread-dot {
+    color: var(--accent-color);
+    font-weight: bold;
+    margin-left: 0.5rem;
 }
 
 /* Responsive */

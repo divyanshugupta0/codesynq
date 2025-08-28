@@ -878,6 +878,7 @@ window.closeTab = closeTab;
 function setupThemeAndSettings() {
     const blurOverlay = document.getElementById('dropdownBlurOverlay');
     const dropdowns = {
+        notifications: { btn: document.getElementById('notificationsBtn'), menu: document.getElementById('notificationsMenu') },
         theme: { btn: document.getElementById('themeToggle'), menu: document.getElementById('themeMenu') },
         layout: { btn: document.getElementById('layoutBtn'), menu: document.getElementById('layoutMenu') },
         settings: { btn: document.getElementById('settingsBtn'), menu: document.getElementById('settingsMenu') },
@@ -895,6 +896,14 @@ function setupThemeAndSettings() {
         closeAllDropdowns();
         menu.classList.add('show');
         if (blurOverlay) blurOverlay.classList.add('show');
+    }
+    
+    // Notifications dropdown
+    if (dropdowns.notifications.btn && dropdowns.notifications.menu) {
+        dropdowns.notifications.btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(dropdowns.notifications.menu);
+        });
     }
     
     // Theme dropdown
@@ -1511,10 +1520,23 @@ function openCodePreview(key, codeData) {
 
 function loadSavedCode(codeData, fileKey) {
     if (editor) {
+        const languageSelect = document.getElementById('languageSelect');
+        
+        // Temporarily remove event listener
+        const oldHandler = languageSelect.onchange;
+        languageSelect.onchange = null;
+        
+        // Set values without triggering events
+        languageSelect.dataset.previousValue = codeData.language;
+        languageSelect.value = codeData.language;
+        
         editor.setValue(codeData.content);
-        document.getElementById('languageSelect').value = codeData.language;
         const mode = window.getCodeMirrorMode(codeData.language);
         editor.setOption('mode', mode);
+        updateLivePreviewVisibility(codeData.language);
+        
+        // Restore event listener
+        setTimeout(() => { languageSelect.onchange = oldHandler; }, 100);
     }
     
     // Track the loaded file

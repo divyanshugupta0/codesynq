@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combinator</title>
+
+    <link rel="stylesheet" href="combinator.css">
+</head>
+<style>
+    /* Child combinator */
+
+article>div{
+    color: red;
+}
+
+/* decendent combinator */
+section aside{
+    color: pink;
+}
+
+
+/* general sibling combinator */
+article~div{
+    color: orange;
+}
+
+/* Adjecent sibling combinator */
+article+div{
+    color: blue;
+}
+</style>
+<body>
+    <div>Lorem ipsum dolor sit amet 1.</div>
+    <article>
+        <div>Lorem ipsum dolor sit amet 2.</div>
+    </article>
+    <div>Lorem ipsum dolor sit amet 3.</div>
+    <section>
+        <aside>
+            <div>Lorem ipsum dolor sit amet 4.</div>
+        </aside>
+    </section>
+    <div>Lorem ipsum dolor sit amet 5.</div>
+</body>
+
+</html>
