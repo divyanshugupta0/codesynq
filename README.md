@@ -1,4 +1,4 @@
-# CodeNexus Pro
+# CodeSynq
 
 A real-time collaborative code editor with multi-language support.
 
