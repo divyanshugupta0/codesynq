@@ -18,35 +18,28 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
 });
 
-// Override browser shortcuts completely
-window.addEventListener('keydown', function(e) {
+// Simple keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    // Only handle shortcuts when not in input fields
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    
     if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
-        e.stopImmediatePropagation();
         if (isTabMode) {
             handleTabModeSave();
         } else {
             saveCode();
         }
-        return false;
     }
-    if (e.ctrlKey && e.key === 'n') {
+    if (e.ctrlKey && e.key === 'n' && isTabMode) {
         e.preventDefault();
-        e.stopImmediatePropagation();
-        if (isTabMode) {
-            addNewTab();
-        }
-        return false;
+        addNewTab();
     }
-    if (e.ctrlKey && e.key === 'w') {
+    if (e.ctrlKey && e.key === 'w' && isTabMode) {
         e.preventDefault();
-        e.stopImmediatePropagation();
-        if (isTabMode) {
-            closeTab(activeTabIndex);
-        }
-        return false;
+        closeTab(activeTabIndex);
     }
-}, true);
+});
 
 let loadingProgress = 0;
 let settingsLoaded = false;
