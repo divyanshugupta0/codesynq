@@ -18,33 +18,135 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
 });
 
+// Override browser shortcuts completely
+window.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (isTabMode) {
+            handleTabModeSave();
+        } else {
+            saveCode();
+        }
+        return false;
+    }
+    if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (isTabMode) {
+            addNewTab();
+        }
+        return false;
+    }
+    if (e.ctrlKey && e.key === 'w') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (isTabMode) {
+            closeTab(activeTabIndex);
+        }
+        return false;
+    }
+}, true);
+
+let loadingProgress = 0;
+let settingsLoaded = false;
+let themeApplied = false;
+let layoutApplied = false;
+let editorSettingsApplied = false;
+
+function updateLoadingProgress(progress, text) {
+    const progressBar = document.getElementById('progressBar');
+    const loadingText = document.querySelector('.loading-text');
+    if (progressBar) progressBar.style.width = progress + '%';
+    if (loadingText && text) loadingText.textContent = text;
+    loadingProgress = progress;
+}
+
 function initializeApp() {
     try {
         console.log('Starting app initialization...');
+        updateLoadingProgress(10, 'Initializing application...');
         
         // Setup profile first
         setupProfile();
+        updateLoadingProgress(25, 'Setting up user profile...');
         
         // Initialize editor
         setupEditor();
+        updateLoadingProgress(50, 'Loading code editor...');
         
         // Setup UI event listeners
         setupUI();
+        updateLoadingProgress(70, 'Setting up interface...');
         
         // Try to connect to server
         console.log('Current URL:', window.location.href);
         console.log('Socket.IO available:', typeof io !== 'undefined');
         tryServerConnection();
+        updateLoadingProgress(85, 'Connecting to server...');
         
         console.log('App initialized successfully');
     
     // Check for room parameter in URL and auto-join
     checkAndJoinFromURL();
     
+    // Check if settings are loaded, if not wait
+    checkSettingsAndHideLoader();
+    
     } catch (error) {
         console.error('App initialization failed:', error);
-        // Ensure basic functionality works even if there are errors
         setupBasicFunctionality();
+        hideLoadingScreen();
+    }
+}
+
+let loaderCheckCount = 0;
+const MAX_LOADER_CHECKS = 100; // 10 seconds max
+
+function checkSettingsAndHideLoader() {
+    loaderCheckCount++;
+    
+    // Fallback: force hide loader after 10 seconds
+    if (loaderCheckCount >= MAX_LOADER_CHECKS) {
+        console.log('Loader timeout reached, forcing hide');
+        updateLoadingProgress(100, 'Ready!');
+        setTimeout(() => hideLoadingScreen(), 500);
+        return;
+    }
+    
+    // Check if user is logged in (either Firebase auth or window.currentUser)
+    const isLoggedIn = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) || window.currentUser;
+    
+    if (isLoggedIn) {
+        // For logged users, wait for all settings to be applied
+        if (themeApplied && layoutApplied && editorSettingsApplied) {
+            console.log('All settings applied for logged user, hiding loader');
+            updateLoadingProgress(100, 'Ready!');
+            setTimeout(() => hideLoadingScreen(), 500);
+        } else {
+            console.log('Waiting for settings:', { themeApplied, layoutApplied, editorSettingsApplied });
+            setTimeout(checkSettingsAndHideLoader, 100);
+        }
+    } else {
+        // For non-logged users, hide loader after server connection
+        if (window.socket && window.socket.connected) {
+            console.log('Server connected for non-logged user, hiding loader');
+            updateLoadingProgress(100, 'Ready!');
+            setTimeout(() => hideLoadingScreen(), 500);
+        } else {
+            setTimeout(checkSettingsAndHideLoader, 100);
+        }
+    }
+}
+
+function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) {
+        loadingScreen.style.opacity = '0';
+        loadingScreen.style.transition = 'opacity 0.8s ease';
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+        }, 800);
     }
 }
 
@@ -373,6 +475,10 @@ function setupProfile() {
                 }, 1000);
             } else {
                 console.log('No user, no previous user');
+                // Set flags for non-logged users immediately
+                themeApplied = true;
+                layoutApplied = true;
+                editorSettingsApplied = true;
             }
         });
     }
@@ -385,52 +491,106 @@ function setupEditor() {
         return;
     }
 
-    try {
-        editor = CodeMirror(editorElement, {
-            mode: 'javascript',
-            theme: 'default',
-            lineNumbers: true,
-            autoCloseBrackets: true,
-            matchBrackets: true,
-            indentUnit: 2,
+    // Load Monaco Editor
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+        const defaultCode = getDefaultCode('javascript');
+        
+        editor = monaco.editor.create(editorElement, {
+            value: defaultCode,
+            language: 'javascript',
+            theme: getMonacoTheme('dark'),
+            automaticLayout: true,
+            fontSize: 14,
+            lineNumbers: 'on',
+            minimap: { enabled: false },
+            wordWrap: 'on',
             tabSize: 2,
-            lineWrapping: true,
-            hintOptions: {hint: getLanguageHints},
-            extraKeys: {
-                'Ctrl-Space': 'autocomplete',
-                'Ctrl-S': function(cm) {
-                    saveCode();
-                    return false;
-                },
-                'Tab': function(cm) {
-                    const tabSize = cm.getOption('tabSize');
-                    const spaces = ' '.repeat(tabSize);
-                    if (cm.somethingSelected()) {
-                        cm.indentSelection('add');
-                    } else {
-                        cm.replaceSelection(spaces);
-                    }
-                }
+            insertSpaces: true,
+            scrollBeyondLastLine: false,
+            renderWhitespace: 'selection',
+            contextmenu: true,
+            mouseWheelZoom: true,
+            quickSuggestions: {
+                other: true,
+                comments: true,
+                strings: true
             },
-            value: '// Welcome to CodeSynq!\n// Start coding here...\n// Press Ctrl+Space for suggestions\n\nconsole.log("Hello, World!");'
+            parameterHints: {
+                enabled: true
+            },
+            suggestOnTriggerCharacters: true,
+            acceptSuggestionOnEnter: 'on',
+            snippetSuggestions: 'top',
+            wordBasedSuggestions: true,
+            tabCompletion: 'on',
+            suggest: {
+                showKeywords: true,
+                showSnippets: true,
+                showClasses: true,
+                showFunctions: true,
+                showVariables: true,
+                showModules: true,
+                showProperties: true,
+                showValues: true,
+                showMethods: true,
+                showWords: true,
+                showColors: true,
+                showFiles: true,
+                showReferences: true,
+                showFolders: true,
+                showTypeParameters: true,
+                showConstants: true,
+                showConstructors: true,
+                showFields: true,
+                showInterfaces: true,
+                showIssues: true,
+                showUsers: true,
+                showUnits: true,
+                snippetsPreventQuickSuggestions: false
+            }
+        });
+        
+        // Register custom snippets for common shortcuts
+        registerCustomSnippets();
+        
+        // Add keyboard shortcuts with proper override
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+            if (isTabMode) {
+                handleTabModeSave();
+            } else {
+                saveCode();
+            }
+        });
+        
+        // Add new tab shortcut
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, function() {
+            if (isTabMode) {
+                addNewTab();
+            } else {
+                showNotification('Switch to Tab Mode to create new tabs');
+            }
+        });
+        
+        // Add close tab shortcut
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyW, function() {
+            if (isTabMode) {
+                closeTab(activeTabIndex);
+            } else {
+                showNotification('Switch to Tab Mode to close tabs');
+            }
+        });
+        
+        // Trigger suggestions on Ctrl+Space
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, function() {
+            editor.trigger('', 'editor.action.triggerSuggest', {});
         });
         
         window.editor = editor;
         window.isEditing = false;
         
-        // Enable auto-suggestions on typing
-        editor.on('inputRead', function(cm, change) {
-            if (change.text[0].match(/[a-zA-Z]/)) {
-                setTimeout(() => {
-                    if (!cm.state.completionActive) {
-                        CodeMirror.commands.autocomplete(cm, null, {completeSingle: false});
-                    }
-                }, 100);
-            }
-        });
-        
         // Track changes for save indication
-        editor.on('change', function(instance, changeObj) {
+        editor.onDidChangeModelContent(function() {
             if (isTabMode && editorTabs[activeTabIndex]) {
                 editorTabs[activeTabIndex].hasChanges = true;
                 renderTabs();
@@ -438,10 +598,7 @@ function setupEditor() {
                 hasUnsavedChanges = true;
                 updateSaveButtonText();
             }
-        });
-        
-        // Add real-time collaboration and auto-save
-        editor.on('change', function(instance, changeObj) {
+            
             // Block changes if in restricted mode and user doesn't have edit rights
             if (currentEditMode === 'restricted' && currentEditor !== window.currentUser?.uid) {
                 return;
@@ -460,7 +617,7 @@ function setupEditor() {
                     window.isEditing = false;
                 }, 100);
                 
-                const code = instance.getValue();
+                const code = editor.getValue();
                 const language = document.getElementById('languageSelect').value;
                 window.socket.emit('code-change', {
                     roomId: window.currentRoom,
@@ -471,25 +628,21 @@ function setupEditor() {
         });
         
         // Add cursor tracking for freestyle mode
-        editor.on('cursorActivity', function(instance) {
+        editor.onDidChangeCursorPosition(function(e) {
             if (isCollaborating && currentEditMode === 'freestyle' && window.socket && window.socket.connected && window.currentRoom) {
-                const cursor = instance.getCursor();
+                const position = e.position;
                 window.socket.emit('cursor-position', {
                     roomId: window.currentRoom,
                     userId: window.currentUser?.uid,
                     userName: window.currentUser?.displayName,
-                    line: cursor.line,
-                    ch: cursor.ch
+                    line: position.lineNumber - 1,
+                    ch: position.column - 1
                 });
             }
         });
         
-        console.log('Editor created successfully');
-    } catch (error) {
-        console.error('Failed to create CodeMirror editor:', error);
-        // Fallback to a simple textarea
-        editorElement.innerHTML = '<textarea id="fallback-editor" style="width:100%;height:100%;background:#1e1e1e;color:#fff;border:none;font-family:monospace;padding:1rem;">// Welcome to CodeNexus Pro!\n// Start coding here...\n\nconsole.log("Hello, World!");</textarea>';
-    }
+        console.log('Monaco Editor created successfully');
+    });
 }
 
 function setupUI() {
@@ -497,40 +650,48 @@ function setupUI() {
     const languageSelect = document.getElementById('languageSelect');
     if (languageSelect) {
         languageSelect.addEventListener('change', function(e) {
+            const newLanguage = e.target.value;
+            
             // Skip validation during restoration
             if (window.isRestoring) {
-                const newLanguage = e.target.value;
                 languageSelect.dataset.previousValue = newLanguage;
+                if (editor && monaco) {
+                    const language = getMonacoLanguage(newLanguage);
+                    monaco.editor.setModelLanguage(editor.getModel(), language);
+                }
                 return;
             }
-            
-            const newLanguage = e.target.value;
             
             // Tab mode specific logic
             if (isTabMode && editorTabs[activeTabIndex]) {
                 editorTabs[activeTabIndex].language = newLanguage;
-                const mode = window.getCodeMirrorMode(newLanguage);
-                if (editor) {
-                    editor.setOption('mode', mode);
+                editorTabs[activeTabIndex].content = getDefaultCode(newLanguage);
+                if (editor && monaco) {
+                    const language = getMonacoLanguage(newLanguage);
+                    monaco.editor.setModelLanguage(editor.getModel(), language);
+                    editor.setValue(getDefaultCode(newLanguage));
                 }
                 renderTabs();
                 return;
             }
             
-            // Original single-file mode logic
-            const currentCode = editor ? editor.getValue() : '';
-            
-            // Auto-save before language change for non-logged users
-            if (!window.currentUser && currentCode.trim()) {
-                saveEditorContent();
+            // Force load language-specific boilerplate code
+            if (editor && monaco) {
+                console.log('Switching to language:', newLanguage);
+                const language = getMonacoLanguage(newLanguage);
+                monaco.editor.setModelLanguage(editor.getModel(), language);
+                
+                const boilerplateCode = getDefaultCode(newLanguage);
+                console.log('Boilerplate code for', newLanguage, ':', boilerplateCode.substring(0, 50) + '...');
+                editor.setValue(boilerplateCode);
+                
+                updateLivePreviewVisibility(newLanguage);
+                showNotification(`Switched to ${newLanguage.charAt(0).toUpperCase() + newLanguage.slice(1)} with boilerplate code`);
             }
             
-            if (currentCode.trim() && currentCode !== getDefaultCode(languageSelect.dataset.previousValue || 'javascript')) {
-                e.target.value = languageSelect.dataset.previousValue || 'javascript';
-                showLanguageSwitchModal(newLanguage);
-            } else {
-                switchLanguage(newLanguage);
-            }
+            currentSavedFile = null;
+            hasUnsavedChanges = false;
+            updateSaveButtonText();
         });
         
         languageSelect.dataset.previousValue = languageSelect.value;
@@ -548,11 +709,18 @@ function setupUI() {
         saveBtn.addEventListener('click', saveCode);
     }
     
-    // Live preview button
-    const livePreviewBtn = document.getElementById('livePreview');
-    if (livePreviewBtn) {
-        livePreviewBtn.addEventListener('click', toggleLivePreview);
-    }
+    // Live preview button - ensure it exists first
+    setTimeout(() => {
+        const livePreviewBtn = document.getElementById('livePreview');
+        if (livePreviewBtn) {
+            livePreviewBtn.addEventListener('click', toggleLivePreview);
+            // Show for HTML by default
+            const languageSelect = document.getElementById('languageSelect');
+            if (languageSelect && languageSelect.value === 'html') {
+                livePreviewBtn.style.display = 'flex';
+            }
+        }
+    }, 200);
     
     // See saved codes button
     const seeSavedBtn = document.getElementById('seeSavedCodes');
@@ -573,11 +741,22 @@ function setupUI() {
     
     document.getElementById('closeSavedCodes').addEventListener('click', () => {
         document.getElementById('savedCodesModal').style.display = 'none';
+        resetSavedCodesModal();
+        cleanupSavedCodesListeners();
     });
     
-    document.getElementById('closePreview').addEventListener('click', () => {
-        document.getElementById('codePreviewModal').style.display = 'none';
+    document.getElementById('backToList').addEventListener('click', () => {
+        if (document.getElementById('codePreviewContent').style.display === 'block') {
+            // From preview back to folder/main list
+            showSavedCodesList();
+        } else {
+            // From folder back to main list
+            currentFolder = null;
+            showSavedCodesList();
+        }
     });
+    
+
     
     // Language switch modal handlers
     document.getElementById('saveBeforeSwitch').addEventListener('click', saveBeforeLanguageSwitch);
@@ -630,9 +809,14 @@ function setupUI() {
     setupLayoutControls();
     
     // Initialize live preview visibility
-    updateLivePreviewVisibility(document.getElementById('languageSelect').value);
+    setTimeout(() => {
+        const languageSelect = document.getElementById('languageSelect');
+        if (languageSelect) {
+            updateLivePreviewVisibility(languageSelect.value);
+        }
+    }, 100);
     
-    // Initialize theme
+    // Initialize theme and settings
     setTimeout(() => {
         if (window.currentUser) {
             loadUserPreferences();
@@ -640,6 +824,7 @@ function setupUI() {
             const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
             applyTheme(savedTheme);
             document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+            loadEditorSettings();
         }
     }, 100);
     
@@ -702,9 +887,44 @@ function setupUI() {
     // Tab mode functionality
     document.getElementById('tabModeBtn').addEventListener('click', toggleTabMode);
     document.getElementById('addTabBtn').addEventListener('click', addNewTab);
+    document.getElementById('saveFolderBtn').addEventListener('click', showSaveFolderModal);
+    
+    // Save folder modal handlers
+    document.getElementById('confirmSaveFolder').addEventListener('click', saveFolderWithName);
+    document.getElementById('cancelSaveFolder').addEventListener('click', () => {
+        document.getElementById('saveFolderModal').style.display = 'none';
+        document.getElementById('folderNameInput').value = '';
+    });
+    
+    document.getElementById('folderNameInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            saveFolderWithName();
+        }
+    });
     
     // Collaboration toggle
     setupCollaborationToggle();
+    
+    // Update load folder handler
+    document.getElementById('loadFolder').addEventListener('click', loadFolderInTabMode);
+    
+    // Delete and share handlers
+    document.getElementById('deleteFolder').addEventListener('click', deleteSavedFolder);
+    document.getElementById('shareFolder').addEventListener('click', shareSavedFolder);
+    document.getElementById('shareCode').addEventListener('click', shareSavedCode);
+    
+    // Custom popup modal handlers
+    document.getElementById('popupConfirm').addEventListener('click', () => {
+        document.getElementById('customPopupModal').style.display = 'none';
+    });
+    document.getElementById('popupCancel').addEventListener('click', () => {
+        document.getElementById('customPopupModal').style.display = 'none';
+    });
+    
+    // Share input modal handlers
+    document.getElementById('shareInputCancel').addEventListener('click', () => {
+        document.getElementById('shareInputModal').style.display = 'none';
+    });
     
     // Initialize video call when collaboration starts (only if user is logged in)
     if (typeof Peer !== 'undefined' && window.currentUser) {
@@ -726,64 +946,55 @@ function setupUI() {
     
     console.log('UI event listeners setup complete');
     
+    // Make custom popup functions globally accessible
+    window.showCustomPopup = showCustomPopup;
+    window.showShareInput = showShareInput;
+    
     // Initialize friend system
     setTimeout(() => {
         if (document.getElementById('addFriendBtn')) {
             setupFriendSystem();
         }
     }, 100);
+    
+    // Close modals when clicking outside
+    document.getElementById('customPopupModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('customPopupModal')) {
+            document.getElementById('customPopupModal').style.display = 'none';
+        }
+    });
+    
+    document.getElementById('shareInputModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('shareInputModal')) {
+            document.getElementById('shareInputModal').style.display = 'none';
+        }
+    });
 }
-
-let monacoEditor = null;
 
 function toggleTabMode() {
     isTabMode = !isTabMode;
     const tabModeBtn = document.getElementById('tabModeBtn');
-    const editorSection = document.querySelector('.editor-section');
     
     if (isTabMode) {
-        tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit VS Code';
+        tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
         tabModeBtn.classList.add('active');
+        document.getElementById('tabBar').style.display = 'flex';
         
-        editorSection.innerHTML = `
-            <div class="editor-toolbar">
-                <div class="toolbar-left">
-                    <button id="tabModeBtn" class="btn-secondary active"><i class="fas fa-times"></i> Exit VS Code</button>
-                    <button id="saveVSCode" class="btn-primary"><i class="fas fa-save"></i> Save to Firebase</button>
-                </div>
-            </div>
-            <div id="monacoContainer" style="width:100%;height:calc(100% - 80px);"></div>
-        `;
-        
-        loadMonacoEditor();
-        document.getElementById('tabModeBtn').addEventListener('click', toggleTabMode);
-        document.getElementById('saveVSCode').addEventListener('click', saveVSCodeContent);
+        // Initialize with first tab
+        if (editorTabs.length === 0) {
+            const currentLang = document.getElementById('languageSelect').value;
+            const fileName = getDefaultFileName(currentLang);
+            addTab(fileName, editor ? editor.getValue() : getDefaultCode(currentLang), currentLang);
+            activeTabIndex = 0;
+            renderTabs();
+        }
     } else {
-        location.reload();
+        tabModeBtn.innerHTML = '<i class="fas fa-folder-open"></i> Tab Mode';
+        tabModeBtn.classList.remove('active');
+        document.getElementById('tabBar').style.display = 'none';
+        editorTabs = [];
+        activeTabIndex = 0;
     }
-}
-
-function loadMonacoEditor() {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js';
-    script.onload = () => {
-        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
-        require(['vs/editor/editor.main'], () => {
-            const language = document.getElementById('languageSelect')?.value || 'javascript';
-            const monacoLang = getMonacoLanguage(language);
-            const defaultCode = getDefaultCode(language);
-            
-            monacoEditor = monaco.editor.create(document.getElementById('monacoContainer'), {
-                value: defaultCode,
-                language: monacoLang,
-                theme: 'vs-dark',
-                automaticLayout: true,
-                fontSize: 14,
-                minimap: { enabled: true }
-            });
-        });
-    };
-    document.head.appendChild(script);
 }
 
 function getMonacoLanguage(language) {
@@ -799,32 +1010,213 @@ function getMonacoLanguage(language) {
     return mapping[language] || 'javascript';
 }
 
-function saveVSCodeContent() {
-    if (!window.currentUser) {
-        showNotification('Please login to save your code!');
-        return;
-    }
+function getMonacoTheme(theme) {
+    const themeMapping = {
+        dark: 'vs-dark',
+        light: 'vs',
+        blue: 'vs-dark',
+        green: 'vs-dark'
+    };
+    return themeMapping[theme] || 'vs-dark';
+}
+
+function registerCustomSnippets() {
+    // HTML snippets
+    monaco.languages.registerCompletionItemProvider('html', {
+        provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            
+            return {
+                suggestions: [
+                    {
+                        label: '.div',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: '<div>\n\t$0\n</div>',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create a div element',
+                        range: range
+                    },
+                    {
+                        label: '.p',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: '<p>$0</p>',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create a paragraph element',
+                        range: range
+                    },
+                    {
+                        label: '.h1',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: '<h1>$0</h1>',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create an h1 heading',
+                        range: range
+                    },
+                    {
+                        label: '.span',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: '<span>$0</span>',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create a span element',
+                        range: range
+                    }
+                ]
+            };
+        }
+    });
     
-    const fileName = prompt('Enter file name:');
-    if (!fileName) return;
+    // Java snippets
+    monaco.languages.registerCompletionItemProvider('java', {
+        provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            
+            return {
+                suggestions: [
+                    {
+                        label: 'psvm',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'public static void main(String[] args) {\n\t$0\n}',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create main method',
+                        range: range
+                    },
+                    {
+                        label: 'sout',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'System.out.println($0);',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'System.out.println',
+                        range: range
+                    },
+                    {
+                        label: 'fori',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++) {\n\t$0\n}',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Create for loop',
+                        range: range
+                    }
+                ]
+            };
+        }
+    });
     
-    const content = monacoEditor ? monacoEditor.getValue() : '';
-    const language = document.getElementById('languageSelect')?.value || 'javascript';
+    // JavaScript snippets
+    monaco.languages.registerCompletionItemProvider('javascript', {
+        provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            
+            return {
+                suggestions: [
+                    {
+                        label: 'log',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'console.log($0);',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Console log',
+                        range: range
+                    },
+                    {
+                        label: 'func',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'function ${1:name}(${2:params}) {\n\t$0\n}',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Function declaration',
+                        range: range
+                    }
+                ]
+            };
+        }
+    });
     
-    const codeData = {
-        name: fileName,
-        content: content,
-        language: language,
-        source: 'vscode-mode',
-        timestamp: firebase.database.ServerValue.TIMESTAMP,
-        lastModified: new Date().toISOString()
+    // Python snippets
+    monaco.languages.registerCompletionItemProvider('python', {
+        provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            
+            return {
+                suggestions: [
+                    {
+                        label: 'def',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'def ${1:function_name}(${2:params}):\n\t$0',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Function definition',
+                        range: range
+                    },
+                    {
+                        label: 'class',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, params}):\n\t\t$0',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Class definition',
+                        range: range
+                    }
+                ]
+            };
+        }
+    });
+    
+    // C/C++ snippets
+    const cppSnippets = {
+        provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            
+            return {
+                suggestions: [
+                    {
+                        label: 'main',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'int main() {\n\t$0\n\treturn 0;\n}',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Main function',
+                        range: range
+                    },
+                    {
+                        label: 'printf',
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: 'printf("$1\\n"${2:, args});',
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: 'Printf statement',
+                        range: range
+                    }
+                ]
+            };
+        }
     };
     
-    database.ref(`users/${window.currentUser.uid}/savedCodes`).push().set(codeData).then(() => {
-        showNotification(`Code saved as "${fileName}"!`);
-    }).catch((error) => {
-        showNotification('Error saving: ' + error.message);
-    });
+    monaco.languages.registerCompletionItemProvider('c', cppSnippets);
+    monaco.languages.registerCompletionItemProvider('cpp', cppSnippets);
 }
 
 function addTab(name, content = '', language = 'javascript') {
@@ -841,9 +1233,63 @@ function addTab(name, content = '', language = 'javascript') {
 }
 
 function addNewTab() {
-    const newTab = addTab('Untitled', getDefaultCode('javascript'), 'javascript');
+    // Create empty tab first
+    const newTab = addTab('New Tab', '', 'javascript');
     activeTabIndex = editorTabs.length - 1;
     renderTabs();
+    
+    // Set language selector to placeholder
+    const langSelect = document.getElementById('languageSelect');
+    
+    // Add placeholder option if not exists
+    if (!langSelect.querySelector('option[value=""]')) {
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '-- Select Language --';
+        placeholderOption.disabled = true;
+        langSelect.insertBefore(placeholderOption, langSelect.firstChild);
+    }
+    
+    langSelect.value = '';
+    langSelect.style.animation = 'pulse 0.5s ease-in-out infinite';
+    
+    // Listen for language change
+    const handleLanguageChange = () => {
+        if (langSelect.value === '') return;
+        
+        langSelect.style.animation = '';
+        const selectedLang = langSelect.value;
+        let fileName = getDefaultFileName(selectedLang);
+        
+        // Check if default name already exists
+        const existingNames = editorTabs.map(tab => tab.name).filter((name, index) => index !== activeTabIndex);
+        if (existingNames.includes(fileName)) {
+            let counter = 2;
+            const baseName = fileName.split('.')[0];
+            const extension = fileName.split('.')[1];
+            while (existingNames.includes(fileName)) {
+                fileName = `${baseName}${counter}.${extension}`;
+                counter++;
+            }
+        }
+        
+        // Update tab with selected language
+        editorTabs[activeTabIndex].name = fileName;
+        editorTabs[activeTabIndex].language = selectedLang;
+        editorTabs[activeTabIndex].content = getDefaultCode(selectedLang);
+        
+        // Remove placeholder option
+        const placeholder = langSelect.querySelector('option[value=""]');
+        if (placeholder) placeholder.remove();
+        
+        renderTabs();
+        switchToTab(activeTabIndex);
+        updateLivePreviewVisibility(selectedLang);
+        
+        langSelect.removeEventListener('change', handleLanguageChange);
+    };
+    
+    langSelect.addEventListener('change', handleLanguageChange);
     switchToTab(activeTabIndex);
 }
 
@@ -856,10 +1302,13 @@ function renderTabs() {
         tabElement.className = `editor-tab ${index === activeTabIndex ? 'active' : ''}`;
         tabElement.innerHTML = `
             <span class="tab-name">${tab.name}${tab.hasChanges ? '*' : ''}</span>
-            <button class="tab-close" onclick="closeTab(${index})" title="Close tab">×</button>
+            <div class="tab-actions">
+                <button class="tab-menu" onclick="showTabMenu(${index}, event)" title="Tab options">⋯</button>
+                <button class="tab-close" onclick="closeTab(${index})" title="Close tab">×</button>
+            </div>
         `;
         tabElement.addEventListener('click', (e) => {
-            if (!e.target.classList.contains('tab-close')) {
+            if (!e.target.classList.contains('tab-close') && !e.target.classList.contains('tab-menu')) {
                 switchToTab(index);
             }
         });
@@ -880,11 +1329,12 @@ function switchToTab(index) {
     const tab = editorTabs[activeTabIndex];
     
     // Load tab content
-    if (editor) {
+    if (editor && monaco) {
         editor.setValue(tab.content);
         document.getElementById('languageSelect').value = tab.language;
-        const mode = window.getCodeMirrorMode(tab.language);
-        editor.setOption('mode', mode);
+        const language = getMonacoLanguage(tab.language);
+        monaco.editor.setModelLanguage(editor.getModel(), language);
+        updateLivePreviewVisibility(tab.language);
     }
     
     renderTabs();
@@ -911,6 +1361,337 @@ function closeTab(index) {
 }
 
 window.closeTab = closeTab;
+
+function handleTabModeSave() {
+    if (!window.currentUser) {
+        showNotification('Please login first to save!');
+        return;
+    }
+    
+    if (currentSavedFolder) {
+        // Update existing folder
+        updateSavedFolder();
+    } else {
+        // Save as new folder
+        showSaveFolderModal();
+    }
+}
+
+let currentSavedFolder = null;
+
+function updateSavedFolder() {
+    // Save current tab content
+    if (editorTabs[activeTabIndex] && editor) {
+        editorTabs[activeTabIndex].content = editor.getValue();
+    }
+    
+    const folderData = {
+        name: currentSavedFolder.name,
+        files: editorTabs.map(tab => ({
+            name: tab.name,
+            content: tab.content,
+            language: tab.language
+        })),
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        lastModified: new Date().toISOString()
+    };
+    
+    database.ref(`users/${window.currentUser.uid}/savedFolders/${currentSavedFolder.key}`).set(folderData).then(() => {
+        // Reset hasChanges for all tabs
+        editorTabs.forEach(tab => tab.hasChanges = false);
+        renderTabs();
+        showNotification(`Updated folder "${currentSavedFolder.name}"!`);
+    }).catch((error) => {
+        showNotification('Error updating folder: ' + error.message);
+    });
+}
+
+function showTabMenu(tabIndex, event) {
+    event.stopPropagation();
+    
+    // Remove existing menu
+    const existingMenu = document.getElementById('tabContextMenu');
+    if (existingMenu) existingMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.id = 'tabContextMenu';
+    menu.className = 'tab-context-menu';
+    menu.innerHTML = `
+        <div class="menu-item" onclick="renameTab(${tabIndex})">
+            <i class="fas fa-edit"></i> Rename
+        </div>
+    `;
+    
+    document.body.appendChild(menu);
+    
+    // Position menu
+    const rect = event.target.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = (rect.bottom + 5) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.style.zIndex = '1000';
+    
+    // Close menu when clicking outside
+    setTimeout(() => {
+        document.addEventListener('click', function closeMenu() {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        });
+    }, 10);
+}
+
+function renameTab(tabIndex) {
+    const tab = editorTabs[tabIndex];
+    if (!tab) return;
+    
+    const newName = prompt('Enter new file name:', tab.name);
+    if (newName && newName.trim() && newName !== tab.name) {
+        // Check if name already exists
+        const existingNames = editorTabs.map((t, i) => i !== tabIndex ? t.name : null).filter(Boolean);
+        if (existingNames.includes(newName.trim())) {
+            showNotification('File name already exists!');
+            return;
+        }
+        
+        tab.name = newName.trim();
+        tab.hasChanges = true;
+        renderTabs();
+        showNotification(`Renamed to "${newName.trim()}"`);
+    }
+}
+
+window.showTabMenu = showTabMenu;
+window.renameTab = renameTab;
+
+let currentFolder = null;
+
+function openFolderFiles(folderKey, folderData) {
+    currentFolder = { key: folderKey, ...folderData };
+    
+    document.getElementById('savedCodesTitle').textContent = `${folderData.name} Files`;
+    document.getElementById('backToList').style.display = 'inline-block';
+    
+    const list = document.getElementById('savedCodesList');
+    list.innerHTML = '';
+    
+    folderData.files.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'saved-code-item';
+        fileItem.innerHTML = `
+            <div class="saved-code-info">
+                <div class="saved-code-name">${file.name}</div>
+                <div class="saved-code-meta">${file.language} • ${file.content.split('\n').length} lines</div>
+            </div>
+            <div class="saved-code-language">${file.language}</div>
+        `;
+        
+        fileItem.addEventListener('click', () => {
+            showCodePreview(file, `folder_${folderKey}_${index}`, true);
+        });
+        
+        list.appendChild(fileItem);
+    });
+    
+    document.getElementById('loadFolder').style.display = 'inline-block';
+    document.getElementById('shareFolder').style.display = 'inline-block';
+    document.getElementById('deleteFolder').style.display = 'inline-block';
+}
+
+function loadFolderInTabMode() {
+    if (!currentFolder) return;
+    
+    // Enable tab mode if not already enabled
+    if (!isTabMode) {
+        toggleTabMode();
+    }
+    
+    // Clear existing tabs
+    editorTabs = [];
+    activeTabIndex = 0;
+    
+    // Load all files as tabs
+    currentFolder.files.forEach((file, index) => {
+        addTab(file.name, file.content, file.language);
+    });
+    
+    // Track the loaded folder as current saved folder
+    currentSavedFolder = {
+        key: currentFolder.key,
+        name: currentFolder.name
+    };
+    
+    // Switch to first tab
+    if (editorTabs.length > 0) {
+        activeTabIndex = 0;
+        switchToTab(0);
+    }
+    
+    renderTabs();
+    document.getElementById('savedCodesModal').style.display = 'none';
+    resetSavedCodesModal();
+    cleanupSavedCodesListeners();
+    showNotification(`Loaded ${currentFolder.files.length} files in tab mode!`);
+}
+
+function deleteSavedFolder() {
+    if (!currentFolder) return;
+    
+    showCustomPopup(
+        'Delete Folder',
+        `Delete folder "${currentFolder.name}"?`,
+        () => {
+            database.ref(`users/${window.currentUser.uid}/savedFolders/${currentFolder.key}`).remove().then(() => {
+                showNotification(`Folder "${currentFolder.name}" deleted!`);
+                currentFolder = null;
+                // Go back to main list after deletion
+                showSavedCodesList();
+            });
+        },
+        true
+    );
+}
+
+function shareSavedFolder() {
+    if (!currentFolder) return;
+    
+    showShareInput(
+        'Share Folder',
+        'Enter username to share folder:',
+        (recipient) => {
+            const shareData = {
+                from: window.currentUser.username,
+                fromUid: window.currentUser.uid,
+                folderName: currentFolder.name,
+                files: currentFolder.files,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                read: false
+            };
+            
+            database.ref(`usernameToUid/${recipient}`).once('value', (snapshot) => {
+                const recipientUid = snapshot.val();
+                if (recipientUid) {
+                    database.ref(`sharedCodes/${recipientUid}`).push(shareData).then(() => {
+                        showNotification(`Folder shared with @${recipient}!`);
+                    });
+                } else {
+                    showNotification('Username not found!');
+                }
+            });
+        }
+    );
+}
+
+function shareSavedCode(codeData) {
+    showShareInput(
+        'Share Code',
+        'Enter username to share code:',
+        (recipient) => {
+            const shareData = {
+                from: window.currentUser.username,
+                fromUid: window.currentUser.uid,
+                code: codeData.content,
+                language: codeData.language,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                read: false
+            };
+            
+            database.ref(`usernameToUid/${recipient}`).once('value', (snapshot) => {
+                const recipientUid = snapshot.val();
+                if (recipientUid) {
+                    database.ref(`sharedCodes/${recipientUid}`).push(shareData).then(() => {
+                        showNotification(`Code shared with @${recipient}!`);
+                    });
+                } else {
+                    showNotification('Username not found!');
+                }
+            });
+        }
+    );
+}
+
+function deleteFileFromFolder(fileKey, fileName) {
+    if (!currentFolder) return;
+    
+    showCustomPopup(
+        'Delete File',
+        `Delete "${fileName}" from folder?`,
+        () => {
+            const fileIndex = parseInt(fileKey.split('_')[2]);
+            currentFolder.files.splice(fileIndex, 1);
+            
+            database.ref(`users/${window.currentUser.uid}/savedFolders/${currentFolder.key}`).set({
+                name: currentFolder.name,
+                files: currentFolder.files,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                lastModified: new Date().toISOString()
+            }).then(() => {
+                showNotification(`File "${fileName}" deleted from folder!`);
+                // Go back to folder list view after deletion
+                showSavedCodesList();
+            });
+        },
+        true
+    );
+}
+
+function showSaveFolderModal() {
+    if (!window.currentUser) {
+        showNotification('Please login first to save folder!');
+        return;
+    }
+    
+    if (!isTabMode || editorTabs.length === 0) {
+        showNotification('No tabs to save!');
+        return;
+    }
+    
+    document.getElementById('saveFolderModal').style.display = 'block';
+    document.getElementById('folderNameInput').focus();
+}
+
+function saveFolderWithName() {
+    const folderName = document.getElementById('folderNameInput').value.trim();
+    
+    if (!folderName) {
+        showNotification('Please enter a folder name!');
+        return;
+    }
+    
+    if (!window.currentUser) {
+        showNotification('Please login first!');
+        return;
+    }
+    
+    const folderData = {
+        name: folderName,
+        files: editorTabs.map(tab => ({
+            name: tab.name,
+            content: tab.content,
+            language: tab.language
+        })),
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        lastModified: new Date().toISOString()
+    };
+    
+    const folderRef = database.ref(`users/${window.currentUser.uid}/savedFolders`).push();
+    folderRef.set(folderData).then(() => {
+        // Track the saved folder
+        currentSavedFolder = {
+            key: folderRef.key,
+            name: folderName
+        };
+        
+        // Reset hasChanges for all tabs
+        editorTabs.forEach(tab => tab.hasChanges = false);
+        renderTabs();
+        
+        document.getElementById('saveFolderModal').style.display = 'none';
+        document.getElementById('folderNameInput').value = '';
+        showNotification(`Folder "${folderName}" saved with ${editorTabs.length} files!`);
+    }).catch((error) => {
+        showNotification('Error saving folder: ' + error.message);
+    });
+}
 
 function setupThemeAndSettings() {
     const blurOverlay = document.getElementById('dropdownBlurOverlay');
@@ -1020,7 +1801,6 @@ function setupThemeAndSettings() {
 
 function setupSettingsHandlers() {
     const fontSizeSelect = document.getElementById('fontSizeSelect');
-    const tabSizeSelect = document.getElementById('tabSizeSelect');
     const lineWrapToggle = document.getElementById('lineWrapToggle');
     const autoCompleteToggle = document.getElementById('autoCompleteToggle');
     const lineNumbersToggle = document.getElementById('lineNumbersToggle');
@@ -1028,71 +1808,153 @@ function setupSettingsHandlers() {
     
     if (fontSizeSelect) {
         fontSizeSelect.addEventListener('change', function() {
-            const fontSize = this.value + 'px';
+            const fontSize = parseInt(this.value);
             if (editor) {
-                const editorElement = document.querySelector('.CodeMirror');
-                if (editorElement) {
-                    editorElement.style.fontSize = fontSize;
-                    editor.refresh();
-                }
+                editor.updateOptions({ fontSize });
             }
-            showNotification(`Font size changed to ${this.value}px`);
-        });
-    }
-    
-    if (tabSizeSelect) {
-        tabSizeSelect.addEventListener('change', function() {
-            const tabSize = parseInt(this.value);
-            if (monacoEditor) {
-                // Monaco Editor (VS Code mode)
-                monacoEditor.updateOptions({
-                    tabSize: tabSize,
-                    insertSpaces: true
-                });
-            } else if (editor) {
-                // CodeMirror editor
-                editor.setOption('tabSize', tabSize);
-                editor.setOption('indentUnit', tabSize);
-            }
-            showNotification(`Tab size changed to ${tabSize} spaces`);
+            saveEditorSetting('fontSize', fontSize);
+            showNotification(`Font size changed to ${fontSize}px`);
         });
     }
     
     if (lineWrapToggle) {
         lineWrapToggle.addEventListener('change', function() {
             if (editor) {
-                editor.setOption('lineWrapping', this.checked);
+                editor.updateOptions({ wordWrap: this.checked ? 'on' : 'off' });
             }
+            saveEditorSetting('lineWrap', this.checked);
             showNotification(`Line wrapping ${this.checked ? 'enabled' : 'disabled'}`);
+        });
+    }
+    
+    if (autoCompleteToggle) {
+        autoCompleteToggle.addEventListener('change', function() {
+            if (editor) {
+                editor.updateOptions({
+                    quickSuggestions: this.checked,
+                    suggestOnTriggerCharacters: this.checked
+                });
+            }
+            saveEditorSetting('autoComplete', this.checked);
+            showNotification(`Auto complete ${this.checked ? 'enabled' : 'disabled'}`);
         });
     }
     
     if (lineNumbersToggle) {
         lineNumbersToggle.addEventListener('change', function() {
-            if (monacoEditor) {
-                monacoEditor.updateOptions({
+            if (editor) {
+                editor.updateOptions({
                     lineNumbers: this.checked ? 'on' : 'off'
                 });
-            } else if (editor) {
-                editor.setOption('lineNumbers', this.checked);
             }
+            saveEditorSetting('lineNumbers', this.checked);
             showNotification(`Line numbers ${this.checked ? 'enabled' : 'disabled'}`);
         });
     }
     
     if (minimapToggle) {
         minimapToggle.addEventListener('change', function() {
-            if (monacoEditor) {
-                monacoEditor.updateOptions({
+            if (editor && monaco) {
+                editor.updateOptions({
                     minimap: { enabled: this.checked }
                 });
+                saveEditorSetting('minimap', this.checked);
                 showNotification(`Minimap ${this.checked ? 'enabled' : 'disabled'}`);
             } else {
-                showNotification('Minimap only available in VS Code mode');
+                showNotification('Editor not available');
                 this.checked = false;
             }
         });
     }
+}
+
+function saveEditorSetting(key, value) {
+    if (window.currentUser && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/editor/${key}`).set(value);
+    } else {
+        localStorage.setItem(`editor_${key}`, JSON.stringify(value));
+    }
+}
+
+function loadEditorSettings() {
+    if (window.currentUser && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/editor`).once('value', (snapshot) => {
+            const settings = snapshot.val() || {};
+            // Ensure editor is ready before applying settings
+            if (editor) {
+                applyEditorSettings(settings);
+            } else {
+                // Wait for editor to be ready
+                setTimeout(() => {
+                    if (editor) {
+                        applyEditorSettings(settings);
+                    }
+                }, 500);
+            }
+        }).catch(e => {
+            console.log('Error loading editor settings:', e);
+            applyEditorSettings({});
+        });
+    } else {
+        const settings = {
+            fontSize: JSON.parse(localStorage.getItem('editor_fontSize') || '14'),
+            lineWrap: JSON.parse(localStorage.getItem('editor_lineWrap') || 'true'),
+            autoComplete: JSON.parse(localStorage.getItem('editor_autoComplete') || 'true'),
+            lineNumbers: JSON.parse(localStorage.getItem('editor_lineNumbers') || 'true'),
+            minimap: JSON.parse(localStorage.getItem('editor_minimap') || 'false')
+        };
+        // Ensure editor is ready before applying settings
+        if (editor) {
+            applyEditorSettings(settings);
+        } else {
+            // Wait for editor to be ready
+            setTimeout(() => {
+                if (editor) {
+                    applyEditorSettings(settings);
+                }
+            }, 500);
+        }
+    }
+}
+
+function applyEditorSettings(settings) {
+    const defaults = {
+        fontSize: 14,
+        lineWrap: true,
+        autoComplete: true,
+        lineNumbers: true,
+        minimap: false
+    };
+    
+    const finalSettings = { ...defaults, ...settings };
+    
+    // Apply to UI controls
+    const fontSizeSelect = document.getElementById('fontSizeSelect');
+    const lineWrapToggle = document.getElementById('lineWrapToggle');
+    const autoCompleteToggle = document.getElementById('autoCompleteToggle');
+    const lineNumbersToggle = document.getElementById('lineNumbersToggle');
+    const minimapToggle = document.getElementById('minimapToggle');
+    
+    if (fontSizeSelect) fontSizeSelect.value = finalSettings.fontSize;
+    if (lineWrapToggle) lineWrapToggle.checked = finalSettings.lineWrap;
+    if (autoCompleteToggle) autoCompleteToggle.checked = finalSettings.autoComplete;
+    if (lineNumbersToggle) lineNumbersToggle.checked = finalSettings.lineNumbers;
+    if (minimapToggle) minimapToggle.checked = finalSettings.minimap;
+    
+    // Apply to editor
+    if (editor) {
+        editor.updateOptions({
+            fontSize: finalSettings.fontSize,
+            tabSize: 2,
+            insertSpaces: true,
+            wordWrap: finalSettings.lineWrap ? 'on' : 'off',
+            lineNumbers: finalSettings.lineNumbers ? 'on' : 'off',
+            minimap: { enabled: finalSettings.minimap },
+            quickSuggestions: finalSettings.autoComplete,
+            suggestOnTriggerCharacters: finalSettings.autoComplete
+        });
+    }
+    editorSettingsApplied = true;
 }
 
 function setupLayoutControls() {
@@ -1220,8 +2082,8 @@ function applyLayout(layout) {
         });
     }
     
-    if (editor && editor.refresh) {
-        setTimeout(() => editor.refresh(), 100);
+    if (editor) {
+        setTimeout(() => editor.layout(), 100);
     }
 }
 
@@ -1282,8 +2144,8 @@ function setupResizer() {
         editorContainer.style.flexShrink = '0';
         outputSection.style.flexShrink = '0';
         
-        if (editor && editor.refresh) {
-            setTimeout(() => editor.refresh(), 0);
+        if (editor) {
+            setTimeout(() => editor.layout(), 0);
         }
     });
     
@@ -1307,6 +2169,25 @@ function resetRunButton() {
         runBtn.innerHTML = '<i class="fas fa-play"></i> Run';
         runBtn.disabled = false;
     }
+}
+
+function hasConnectedFiles() {
+    if (!isTabMode) return false;
+    
+    const htmlTab = editorTabs.find(tab => tab.language === 'html');
+    if (!htmlTab) return false;
+    
+    const currentTab = editorTabs[activeTabIndex];
+    if (!currentTab) return false;
+    
+    // Only consider current tab connected if HTML references it by exact filename
+    if (currentTab.language === 'css') {
+        return htmlTab.content.includes(`href="${currentTab.name}"`) || htmlTab.content.includes(`href='${currentTab.name}'`);
+    } else if (currentTab.language === 'javascript') {
+        return htmlTab.content.includes(`src="${currentTab.name}"`) || htmlTab.content.includes(`src='${currentTab.name}'`);
+    }
+    
+    return false;
 }
 
 function executeCode() {
@@ -1443,6 +2324,10 @@ function saveCodeWithName(fileName) {
     });
 }
 
+// Global variables for Firebase listeners
+let savedCodesListener = null;
+let savedFoldersListener = null;
+
 function showSavedCodes() {
     if (!window.currentUser) {
         showNotification('Please login to view saved codes!');
@@ -1455,39 +2340,108 @@ function showSavedCodes() {
     list.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
     modal.style.display = 'block';
     
-    database.ref(`users/${window.currentUser.uid}/savedCodes`).once('value', (snapshot) => {
-        const codes = snapshot.val();
-        list.innerHTML = '';
-        
-        if (!codes) {
-            list.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">No saved codes found</div>';
-            return;
+    // Remove existing listeners to prevent duplicates
+    if (savedCodesListener) {
+        database.ref(`users/${window.currentUser.uid}/savedCodes`).off('value', savedCodesListener);
+    }
+    if (savedFoldersListener) {
+        database.ref(`users/${window.currentUser.uid}/savedFolders`).off('value', savedFoldersListener);
+    }
+    
+    let codesData = null;
+    let foldersData = null;
+    let updateTimeout = null;
+    
+    function updateList() {
+        // Debounce rapid updates
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
         }
         
-        Object.entries(codes).forEach(([key, codeData]) => {
-            const item = document.createElement('div');
-            item.className = 'saved-code-item';
-            item.innerHTML = `
-                <div class="saved-code-info">
-                    <div class="saved-code-name">${codeData.name}</div>
-                    <div class="saved-code-meta">
-                        ${new Date(codeData.lastModified).toLocaleDateString()} • 
-                        ${codeData.content.split('\n').length} lines
+        updateTimeout = setTimeout(() => {
+            performUpdate();
+        }, 100);
+    }
+    
+    function performUpdate() {
+        list.innerHTML = '';
+        
+        let hasContent = false;
+        
+        // Add folders first
+        if (foldersData && typeof foldersData === 'object' && foldersData !== null && Object.keys(foldersData).length > 0) {
+            hasContent = true;
+            Object.entries(foldersData).forEach(([key, folderData]) => {
+                const item = document.createElement('div');
+                item.className = 'saved-code-item folder-item';
+                item.innerHTML = `
+                    <div class="saved-code-info">
+                        <div class="saved-code-name"><i class="fas fa-folder"></i> ${folderData.name}</div>
+                        <div class="saved-code-meta">
+                            ${new Date(folderData.lastModified).toLocaleDateString()} • 
+                            ${folderData.files ? folderData.files.length : 0} files
+                        </div>
                     </div>
-                </div>
-                <div class="saved-code-language">${codeData.language}</div>
-            `;
-            
-            item.addEventListener('mouseenter', (e) => {
-                currentMouseX = e.clientX;
-                currentMouseY = e.clientY;
-                showCodePreview(codeData);
+                    <div class="saved-code-language">Folder</div>
+                `;
+                
+                item.addEventListener('click', () => openFolderFiles(key, folderData));
+                list.appendChild(item);
             });
-            item.addEventListener('mouseleave', hideCodePreview);
-            item.addEventListener('click', () => openCodePreview(key, codeData));
-            
-            list.appendChild(item);
-        });
+        }
+        
+        // Add individual codes
+        if (codesData && typeof codesData === 'object' && codesData !== null && Object.keys(codesData).length > 0) {
+            hasContent = true;
+            Object.entries(codesData).forEach(([key, codeData]) => {
+                const item = document.createElement('div');
+                item.className = 'saved-code-item';
+                item.innerHTML = `
+                    <div class="saved-code-info">
+                        <div class="saved-code-name">${codeData.name}</div>
+                        <div class="saved-code-meta">
+                            ${new Date(codeData.lastModified).toLocaleDateString()} • 
+                            ${codeData.content.split('\n').length} lines
+                        </div>
+                    </div>
+                    <div class="saved-code-language">${codeData.language}</div>
+                `;
+                
+                item.addEventListener('click', () => showCodePreview(codeData, key));
+                
+                list.appendChild(item);
+            });
+        }
+        
+        // Show no content message only if both are empty or null
+        if (!hasContent) {
+            list.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">No saved codes or folders found</div>';
+        }
+    }
+    
+    // Set up real-time listeners with proper error handling
+    savedCodesListener = (snapshot) => {
+        codesData = snapshot.val();
+        console.log('Codes data updated:', codesData);
+        updateList();
+    };
+    
+    savedFoldersListener = (snapshot) => {
+        foldersData = snapshot.val();
+        console.log('Folders data updated:', foldersData);
+        updateList();
+    };
+    
+    database.ref(`users/${window.currentUser.uid}/savedCodes`).on('value', savedCodesListener, (error) => {
+        console.error('Error loading saved codes:', error);
+        codesData = null;
+        updateList();
+    });
+    
+    database.ref(`users/${window.currentUser.uid}/savedFolders`).on('value', savedFoldersListener, (error) => {
+        console.error('Error loading saved folders:', error);
+        foldersData = null;
+        updateList();
     });
 }
 
@@ -1557,37 +2511,98 @@ function hideCodePreview() {
     if (preview) preview.remove();
 }
 
-function openCodePreview(key, codeData) {
-    hideCodePreview();
-    const modal = document.getElementById('codePreviewModal');
-    document.getElementById('previewTitle').textContent = codeData.name;
-    document.getElementById('codePreview').textContent = codeData.content;
+function showCodePreview(codeData, key, isFromFolder = false) {
+    document.getElementById('savedCodesTitle').textContent = codeData.name;
+    document.getElementById('backToList').style.display = 'inline-block';
     
-    document.getElementById('loadCode').onclick = () => loadSavedCode(codeData, key);
-    document.getElementById('deleteCode').onclick = () => deleteSavedCode(key, codeData.name);
+    document.getElementById('savedCodesList').style.display = 'none';
+    document.getElementById('codePreviewContent').style.display = 'block';
+    document.getElementById('codePreviewContent').textContent = codeData.content;
     
-    modal.style.display = 'block';
+    document.getElementById('loadCode').style.display = 'inline-block';
+    document.getElementById('loadCode').onclick = () => {
+        loadSavedCode(codeData, key);
+    };
+    
+    if (!isFromFolder) {
+        document.getElementById('shareCode').style.display = 'inline-block';
+        document.getElementById('deleteCode').style.display = 'inline-block';
+        document.getElementById('shareCode').onclick = () => shareSavedCode(codeData);
+        document.getElementById('deleteCode').onclick = () => deleteSavedCode(key, codeData.name);
+    } else {
+        document.getElementById('shareCode').style.display = 'inline-block';
+        document.getElementById('deleteCode').style.display = 'inline-block';
+        document.getElementById('shareCode').onclick = () => shareSavedCode(codeData);
+        document.getElementById('deleteCode').onclick = () => deleteFileFromFolder(key, codeData.name);
+    }
+    
+    document.getElementById('loadFolder').style.display = 'none';
+    document.getElementById('deleteFolder').style.display = 'none';
+    document.getElementById('shareFolder').style.display = 'none';
+}
+
+function showSavedCodesList() {
+    if (currentFolder) {
+        // Show folder files
+        document.getElementById('savedCodesTitle').textContent = `${currentFolder.name} Files`;
+        document.getElementById('backToList').style.display = 'inline-block';
+        document.getElementById('loadFolder').style.display = 'inline-block';
+        document.getElementById('shareFolder').style.display = 'inline-block';
+        document.getElementById('deleteFolder').style.display = 'inline-block';
+    } else {
+        // Show main list
+        document.getElementById('savedCodesTitle').textContent = 'Saved Codes';
+        document.getElementById('backToList').style.display = 'none';
+        document.getElementById('loadFolder').style.display = 'none';
+        document.getElementById('shareFolder').style.display = 'none';
+        document.getElementById('deleteFolder').style.display = 'none';
+        showSavedCodes();
+    }
+    
+    document.getElementById('savedCodesList').style.display = 'block';
+    document.getElementById('codePreviewContent').style.display = 'none';
+    document.getElementById('loadCode').style.display = 'none';
+    document.getElementById('shareCode').style.display = 'none';
+    document.getElementById('deleteCode').style.display = 'none';
+}
+
+function resetSavedCodesModal() {
+    currentFolder = null;
+    document.getElementById('savedCodesTitle').textContent = 'Saved Codes';
+    document.getElementById('backToList').style.display = 'none';
+    document.getElementById('savedCodesList').style.display = 'block';
+    document.getElementById('codePreviewContent').style.display = 'none';
+    document.getElementById('loadCode').style.display = 'none';
+    document.getElementById('shareCode').style.display = 'none';
+    document.getElementById('deleteCode').style.display = 'none';
+    document.getElementById('loadFolder').style.display = 'none';
+    document.getElementById('shareFolder').style.display = 'none';
+    document.getElementById('deleteFolder').style.display = 'none';
+}
+
+function cleanupSavedCodesListeners() {
+    if (savedCodesListener && window.currentUser) {
+        database.ref(`users/${window.currentUser.uid}/savedCodes`).off('value', savedCodesListener);
+        savedCodesListener = null;
+    }
+    if (savedFoldersListener && window.currentUser) {
+        database.ref(`users/${window.currentUser.uid}/savedFolders`).off('value', savedFoldersListener);
+        savedFoldersListener = null;
+    }
 }
 
 function loadSavedCode(codeData, fileKey) {
-    if (editor) {
+    if (editor && monaco) {
         const languageSelect = document.getElementById('languageSelect');
         
-        // Temporarily remove event listener
-        const oldHandler = languageSelect.onchange;
-        languageSelect.onchange = null;
-        
-        // Set values without triggering events
-        languageSelect.dataset.previousValue = codeData.language;
+        // Set language and content
         languageSelect.value = codeData.language;
+        languageSelect.dataset.previousValue = codeData.language;
         
+        const language = getMonacoLanguage(codeData.language);
+        monaco.editor.setModelLanguage(editor.getModel(), language);
         editor.setValue(codeData.content);
-        const mode = window.getCodeMirrorMode(codeData.language);
-        editor.setOption('mode', mode);
         updateLivePreviewVisibility(codeData.language);
-        
-        // Restore event listener
-        setTimeout(() => { languageSelect.onchange = oldHandler; }, 100);
     }
     
     // Track the loaded file
@@ -1598,8 +2613,10 @@ function loadSavedCode(codeData, fileKey) {
     hasUnsavedChanges = false;
     updateSaveButtonText();
     
-    document.getElementById('codePreviewModal').style.display = 'none';
+    // Close modal and reset
     document.getElementById('savedCodesModal').style.display = 'none';
+    resetSavedCodesModal();
+    cleanupSavedCodesListeners();
     showNotification(`Loaded "${codeData.name}"`);
 }
 
@@ -1622,8 +2639,8 @@ function deleteSavedCode(key, name) {
     if (confirm(`Are you sure you want to delete "${name}"?`)) {
         database.ref(`users/${window.currentUser.uid}/savedCodes/${key}`).remove().then(() => {
             showNotification(`Deleted "${name}"`);
-            document.getElementById('codePreviewModal').style.display = 'none';
-            showSavedCodes(); // Refresh the list
+            // Go back to list view after deletion
+            showSavedCodesList();
         });
     }
 }
@@ -1767,14 +2784,14 @@ function updateEditorPermissions() {
     }
     
     if (currentEditMode === 'freestyle') {
-        editor.setOption('readOnly', false);
+        editor.updateOptions({ readOnly: false });
         if (currentEditorSpan) currentEditorSpan.textContent = 'Freestyle Mode - All can edit';
     } else if (currentEditMode === 'restricted') {
         if (currentEditor && currentEditor === window.currentUser?.uid) {
-            editor.setOption('readOnly', false);
+            editor.updateOptions({ readOnly: false });
             if (currentEditorSpan) currentEditorSpan.textContent = 'You are editing';
         } else {
-            editor.setOption('readOnly', true);
+            editor.updateOptions({ readOnly: true });
             if (currentEditorSpan) {
                 currentEditorSpan.innerHTML = `<button onclick="requestEdit()" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Request Edit</button>`;
             }
@@ -2089,9 +3106,36 @@ function addTerminalInput() {
 function showPreview(html) {
     const preview = document.getElementById('preview');
     if (preview) {
-        preview.innerHTML = `<iframe srcdoc="${html.replace(/"/g, '&quot;')}" style="width:100%;height:100%;border:none;"></iframe>`;
+        let processedHtml = html;
+        
+        // In tab mode, resolve file references
+        if (isTabMode) {
+            processedHtml = resolveFileReferences(html);
+        }
+        
+        preview.innerHTML = `<iframe srcdoc="${processedHtml.replace(/"/g, '&quot;')}" style="width:100%;height:100%;border:none;"></iframe>`;
         switchTab('preview');
     }
+}
+
+function resolveFileReferences(htmlContent) {
+    let processedHtml = htmlContent;
+    
+    editorTabs.forEach(tab => {
+        if (tab.language === 'css') {
+            processedHtml = processedHtml.replace(
+                new RegExp(`<link[^>]*href=["']${tab.name}["'][^>]*>`, 'gi'),
+                `<style>${tab.content}</style>`
+            );
+        } else if (tab.language === 'javascript') {
+            processedHtml = processedHtml.replace(
+                new RegExp(`<script[^>]*src=["']${tab.name}["'][^>]*></script>`, 'gi'),
+                `<script>${tab.content}</script>`
+            );
+        }
+    });
+    
+    return processedHtml;
 }
 
 function updateStatus(status) {
@@ -2122,22 +3166,33 @@ function runCodeLocally(code, language) {
                 
                 try {
                     eval(code);
-                    displayOutput(output || 'Code executed successfully');
+                    if (isLivePreviewEnabled && hasConnectedFiles()) {
+                        // Stay on preview, don't switch to console
+                    } else {
+                        displayOutput(output || 'Code executed successfully');
+                    }
                 } catch (error) {
                     displayOutput('', error.message);
                 } finally {
                     console.log = originalLog;
                 }
                 break;
-                break;
                 
             case 'html':
                 showPreview(code);
-                displayOutput('HTML preview updated');
+                if (!isLivePreviewEnabled || !hasConnectedFiles()) {
+                    displayOutput('HTML preview updated');
+                }
                 break;
                 
             case 'css':
-                displayOutput('CSS code ready (combine with HTML for preview)');
+                if (isLivePreviewEnabled && hasConnectedFiles()) {
+                    // Update HTML preview if connected
+                    const htmlTab = editorTabs.find(tab => tab.language === 'html');
+                    if (htmlTab) showPreview(htmlTab.content);
+                } else {
+                    displayOutput('CSS code ready (combine with HTML for preview)');
+                }
                 break;
                 
             case 'python':
@@ -2188,20 +3243,18 @@ function updateLivePreviewVisibility(language) {
     const btn = document.getElementById('livePreview');
     const runBtn = document.getElementById('runCode');
     
-    if (language === 'html') {
-        btn.style.display = 'flex';
+    if (language === 'html' || (hasConnectedFiles() && (language === 'css' || language === 'javascript'))) {
+        if (btn) btn.style.display = 'flex';
         if (isLivePreviewEnabled) {
+            if (runBtn) runBtn.disabled = true;
             updateLivePreview();
         }
     } else {
-        btn.style.display = 'none';
-        if (isLivePreviewEnabled) {
-            btn.classList.remove('active');
-            runBtn.disabled = false;
+        if (btn) btn.style.display = 'none';
+        if (runBtn) runBtn.disabled = false;
+        if (isLivePreviewEnabled && !hasConnectedFiles()) {
+            if (btn) btn.classList.remove('active');
             isLivePreviewEnabled = false;
-            if (editor) {
-                editor.off('change', updateLivePreview);
-            }
         }
     }
 }
@@ -2221,7 +3274,7 @@ function toggleLivePreview() {
         showNotification('Live Preview enabled');
         
         if (editor) {
-            editor.on('change', updateLivePreview);
+            livePreviewDisposable = editor.onDidChangeModelContent(updateLivePreview);
         }
         updateLivePreview();
     } else {
@@ -2229,25 +3282,35 @@ function toggleLivePreview() {
         runBtn.disabled = false;
         showNotification('Live Preview disabled');
         
-        if (editor) {
-            editor.off('change', updateLivePreview);
+        if (livePreviewDisposable) {
+            livePreviewDisposable.dispose();
+            livePreviewDisposable = null;
         }
     }
 }
+
+let livePreviewDisposable = null;
 
 function updateLivePreview() {
     if (!isLivePreviewEnabled) return;
     
     const language = document.getElementById('languageSelect').value;
-    if (language === 'html') {
-        const code = editor ? editor.getValue() : '';
-        showPreview(code);
+    const htmlTab = editorTabs.find(tab => tab.language === 'html');
+    
+    if (language === 'html' || (hasConnectedFiles() && htmlTab && (language === 'css' || language === 'javascript'))) {
+        // Always use HTML tab content, even when editing CSS/JS
+        const htmlCode = htmlTab ? htmlTab.content : (editor ? editor.getValue() : '');
+        showPreview(htmlCode);
         switchTab('preview');
         
         // Update new window if open
         if (previewWindow && !previewWindow.closed) {
+            let processedHtml = htmlCode;
+            if (isTabMode) {
+                processedHtml = resolveFileReferences(htmlCode);
+            }
             previewWindow.document.open();
-            previewWindow.document.write(code);
+            previewWindow.document.write(processedHtml);
             previewWindow.document.close();
         }
     }
@@ -2276,13 +3339,19 @@ let pendingLanguageSwitch = null;
 
 function getDefaultCode(language) {
     const defaults = {
-        javascript: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\nconsole.log("Hello, World!");',
-        python: '# Welcome to CodeSynq!\n# Press Ctrl+Space for suggestions\n\nprint("Hello, World!")',
-        html: '<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <!-- Press Ctrl+Space for suggestions -->\n    <h1>Hello, World!</h1>\n</body>\n</html>',
-        css: '/* Welcome to CodeSynq! */\n/* Press Ctrl+Space for suggestions */\n\nbody {\n    font-family: Arial, sans-serif;\n}',
-        java: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-        c: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
-        cpp: '// Welcome to CodeSynq!\n// Press Ctrl+Space for suggestions\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}'
+        javascript: '// Welcome to CodeSynq!\n// JavaScript - Dynamic Programming Language\n// Press Ctrl+Space for IntelliSense suggestions\n\nconsole.log("Hello from CodeSynq!");\n\n// Example: Variables and Functions\nconst greeting = "Welcome to CodeSynq-JavaScript!";\nfunction showMessage(msg) {\n    console.log(msg);\n}\n\nshowMessage(greeting);',
+        
+        python: '# Welcome to CodeSynq!\n# Python - High-level Programming Language\n# Press Ctrl+Space for suggestions\n\nprint("Hello, CodeSynq-Python")\n\n# Example: Variables and Functions\ngreeting = "Welcome to CodeSynq!"\ndef show_message(msg):\n    print(msg)\n\nshow_message(greeting)',
+        
+        html: '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>CodeSynq - HTML Page</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 40px; }\n        .container { max-width: 800px; margin: 0 auto; }\n        h1 { color: #333; }\n    </style>\n</head>\n<body>\n    <div class="container">\n        <h1>Hello, World!</h1>\n        <p>Welcome to HTML development with CodeSynq!</p>\n        <button onclick="alert(\'Hello from CodeSynq!\')">Click Me</button>\n    </div>\n</body>\n</html>',
+        
+        css: '/* Welcome to CodeSynq! */\n/* CSS - Cascading Style Sheets */\n/* Press Ctrl+Space for property suggestions */\n\n/* Reset and Base Styles */\n* {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\nbody {\n    font-family: \'Arial\', sans-serif;\n    line-height: 1.6;\n    color: #333;\n    background: #f4f4f4;\n}\n\n.container {\n    max-width: 1200px;\n    margin: 0 auto;\n    padding: 20px;\n}\n\nh1 {\n    color: #2c3e50;\n    text-align: center;\n    margin-bottom: 30px;\n}',
+        
+        java: '// Welcome to CodeSynq!\n// Java - Object-Oriented Programming Language\n// Press Ctrl+Space for suggestions\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from CodeSynq!");\n        \n        // Example: Variables and Methods\n        String greeting = "Welcome to CodeSynq-Java!";\n        showMessage(greeting);\n        \n        // Example: Simple calculation\n        int result = addNumbers(5, 3);\n        System.out.println("5 + 3 = " + result);\n    }\n    \n    public static void showMessage(String msg) {\n        System.out.println(msg);\n    }\n    \n    public static int addNumbers(int a, int b) {\n        return a + b;\n    }\n}',
+    
+        c: '// Welcome to CodeSynq!\n// C - Procedural Programming Language\n// Press Ctrl+Space for suggestions\n\n#include <stdio.h>\n#include <stdlib.h>\n\n// Function declarations\nvoid showMessage(const char* msg);\nint addNumbers(int a, int b);\n\nint main() {\n    printf("Hello from CodeSynq!\\n");\n    \n    // Example: Variables and Functions\n    const char* greeting = "Welcome to CodeSynq- C Programming!";\n    showMessage(greeting);\n    \n    // Example: Simple calculation\n    int result = addNumbers(5, 3);\n    printf("5 + 3 = %d\\n", result);\n    \n    return 0;\n}\n\nvoid showMessage(const char* msg) {\n    printf("%s\\n", msg);\n}\n\nint addNumbers(int a, int b) {\n    return a + b;\n}',
+        
+        cpp: '// Welcome to CodeSynq!\n// C++ - Object-Oriented Programming Language\n// Press Ctrl+Space for suggestions\n\n#include <iostream>\n#include <string>\n\nusing namespace std;\n\n// Function declarations\nvoid showMessage(const string& msg);\nint addNumbers(int a, int b);\n\nint main() {\n    cout << "Hello from CodeSynq!" << endl;\n    \n    // Example: Variables and Functions\n    string greeting = "Welcome to CodeSynq-C++!";\n    showMessage(greeting);\n    \n    // Example: Simple calculation\n    int result = addNumbers(5, 3);\n    cout << "5 + 3 = " << result << endl;\n    \n    return 0;\n}\n\nvoid showMessage(const string& msg) {\n    cout << msg << endl;\n}\n\nint addNumbers(int a, int b) {\n    return a + b;\n}'
     };
     return defaults[language] || defaults.javascript;
 }
@@ -2332,18 +3401,24 @@ function switchLanguage(newLanguage) {
     languageSelect.value = newLanguage;
     languageSelect.dataset.previousValue = newLanguage;
     
-    const mode = window.getCodeMirrorMode(newLanguage);
-    if (editor && editor.setOption) {
-        editor.setOption('mode', mode);
-        editor.setValue(getDefaultCode(newLanguage));
+    if (editor && monaco) {
+        const language = getMonacoLanguage(newLanguage);
+        monaco.editor.setModelLanguage(editor.getModel(), language);
+        
+        // Load language-specific boilerplate code
+        const boilerplateCode = getDefaultCode(newLanguage);
+        editor.setValue(boilerplateCode);
+        
+        // Show notification about language change
+        showNotification(`Switched to ${newLanguage.toUpperCase()} with boilerplate code`);
     }
+    
+    updateLivePreviewVisibility(newLanguage);
     
     // Reset file tracking when switching languages
     currentSavedFile = null;
     hasUnsavedChanges = false;
     updateSaveButtonText();
-    
-    updateLivePreviewVisibility(newLanguage);
 }
 
 function saveEditorContent() {
@@ -2376,15 +3451,15 @@ function restoreEditorContent() {
                     languageSelect.value = content.language;
                     languageSelect.dataset.previousValue = content.language;
                     
-                    const mode = window.getCodeMirrorMode(content.language);
-                    editor.setOption('mode', mode);
+                    const language = getMonacoLanguage(content.language);
+                    monaco.editor.setModelLanguage(editor.getModel(), language);
                     updateLivePreviewVisibility(content.language);
                 }
                 
                 // Restore content
                 if (content.code && content.code.trim() !== '') {
                     editor.setValue(content.code);
-                    editor.refresh();
+                    editor.layout();
                 }
                 
                 // Restore layout
@@ -2692,14 +3767,9 @@ function getCurrentLayout() {
 function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     
-    if (editor) {
-        const editorThemes = {
-            dark: 'vscode-dark',
-            light: 'default',
-            blue: 'material',
-            green: 'monokai'
-        };
-        editor.setOption('theme', editorThemes[theme] || 'vscode-dark');
+    if (editor && monaco) {
+        const monacoTheme = getMonacoTheme(theme);
+        monaco.editor.setTheme(monacoTheme);
     }
     
     // Update favicon based on theme
@@ -2810,18 +3880,23 @@ function getLanguageHints(cm, options) {
     };
 }
 
+function getDefaultFileName(language) {
+    const fileNames = {
+        javascript: 'main.js',
+        python: 'main.py',
+        html: 'index.html',
+        css: 'style.css',
+        java: 'Main.java',
+        c: 'main.c',
+        cpp: 'main.cpp'
+    };
+    return fileNames[language] || 'untitled.txt';
+}
+
 // Utility functions
 window.getCodeMirrorMode = function(language) {
-    const modes = {
-        javascript: 'javascript',
-        python: 'python',
-        html: 'xml',
-        css: 'css',
-        java: 'text/x-java',
-        c: 'text/x-csrc',
-        cpp: 'text/x-c++src'
-    };
-    return modes[language] || 'javascript';
+    // Legacy function for compatibility - now uses Monaco
+    return getMonacoLanguage(language);
 };
 
 function getFileExtension(language) {
@@ -2919,12 +3994,17 @@ function updateUserList(users) {
 
 function loadUserPreferences() {
     if (!window.currentUser || typeof database === 'undefined') {
-        // Fallback to localStorage for non-logged users
+        // For non-logged users, apply default theme immediately
         const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
         applyTheme(savedTheme);
         document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+        themeApplied = true;
+        layoutApplied = true;
+        editorSettingsApplied = true;
         return;
     }
+    
+    updateLoadingProgress(90, 'Loading your preferences...');
     
     database.ref(`users/${window.currentUser.uid}/preferences`).once('value', (snapshot) => {
         const prefs = snapshot.val();
@@ -2936,15 +4016,18 @@ function loadUserPreferences() {
                 document.body.setAttribute('data-theme', prefs.theme);
                 if (editor) {
                     const editorThemes = {
-                        dark: 'vscode-dark',
-                        light: 'default',
-                        blue: 'material',
-                        green: 'monokai'
+                        dark: 'vs-dark',
+                        light: 'vs',
+                        blue: 'vs-dark',
+                        green: 'vs-dark'
                     };
-                    editor.setOption('theme', editorThemes[prefs.theme] || 'vscode-dark');
+                    monaco.editor.setTheme(editorThemes[prefs.theme] || 'vs-dark');
                 }
                 document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('active'));
                 document.querySelector(`[data-theme="${prefs.theme}"]`)?.classList.add('active');
+                themeApplied = true;
+            } else {
+                themeApplied = true;
             }
             
             // Apply saved layout
@@ -2953,13 +4036,29 @@ function loadUserPreferences() {
                     applyLayout(prefs.layout);
                     document.querySelectorAll('.layout-option').forEach(opt => opt.classList.remove('active'));
                     document.querySelector(`[data-layout="${prefs.layout}"]`)?.classList.add('active');
+                    layoutApplied = true;
                 }, 300);
+            } else {
+                layoutApplied = true;
             }
+            
+            // Load editor settings after theme and layout
+            setTimeout(() => {
+                loadEditorSettings();
+                updateLoadingProgress(95, 'Applying settings...');
+            }, 400);
         } else {
             // No preferences saved, apply defaults
             const defaultTheme = 'dark';
             applyTheme(defaultTheme);
             document.querySelector(`[data-theme="${defaultTheme}"]`)?.classList.add('active');
+            
+            // Load editor settings with defaults
+            setTimeout(() => {
+                loadEditorSettings();
+                themeApplied = true;
+                layoutApplied = true;
+            }, 400);
         }
     }).catch(e => {
         console.log('Error loading preferences:', e);
@@ -2967,6 +4066,9 @@ function loadUserPreferences() {
         const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
         applyTheme(savedTheme);
         document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+        themeApplied = true;
+        layoutApplied = true;
+        editorSettingsApplied = true;
     });
 }
 
@@ -4359,6 +5461,122 @@ function triggerPinnedChatAnimation() {
 // Store pinned chat info globally
 window.pinnedChatId = null;
 window.pinnedChatType = null;
+
+// Custom popup functions
+function showCustomPopup(title, message, onConfirm, showCancel = false) {
+    document.getElementById('popupTitle').textContent = title;
+    document.getElementById('popupMessage').textContent = message;
+    document.getElementById('popupCancel').style.display = showCancel ? 'inline-block' : 'none';
+    
+    const modal = document.getElementById('customPopupModal');
+    modal.style.display = 'block';
+    
+    const confirmBtn = document.getElementById('popupConfirm');
+    const cancelBtn = document.getElementById('popupCancel');
+    
+    const handleConfirm = () => {
+        modal.style.display = 'none';
+        if (onConfirm) onConfirm();
+        confirmBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+    };
+    
+    const handleCancel = () => {
+        modal.style.display = 'none';
+        confirmBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+    };
+    
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+}
+
+function showShareInput(title, label, onConfirm) {
+    document.getElementById('shareInputTitle').textContent = title;
+    document.getElementById('shareInputLabel').textContent = label;
+    document.getElementById('shareInputField').value = '';
+    
+    // Load friends list
+    loadShareFriendsList();
+    
+    const modal = document.getElementById('shareInputModal');
+    modal.style.display = 'block';
+    document.getElementById('shareInputField').focus();
+    
+    const confirmBtn = document.getElementById('shareInputConfirm');
+    const cancelBtn = document.getElementById('shareInputCancel');
+    const inputField = document.getElementById('shareInputField');
+    
+    const handleConfirm = () => {
+        const value = inputField.value.trim();
+        if (value) {
+            modal.style.display = 'none';
+            if (onConfirm) onConfirm(value);
+        }
+        cleanup();
+    };
+    
+    const handleCancel = () => {
+        modal.style.display = 'none';
+        cleanup();
+    };
+    
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter') handleConfirm();
+    };
+    
+    const cleanup = () => {
+        confirmBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+        inputField.removeEventListener('keypress', handleKeyPress);
+    };
+    
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+    inputField.addEventListener('keypress', handleKeyPress);
+}
+
+function loadShareFriendsList() {
+    const friendsList = document.getElementById('shareFriendsList');
+    
+    if (!window.currentUser) {
+        friendsList.innerHTML = '<p class="no-friends">Login to see friends</p>';
+        return;
+    }
+    
+    friendsList.innerHTML = '<p class="loading-friends">Loading friends...</p>';
+    
+    database.ref(`friends/${window.currentUser.uid}`).once('value', (snapshot) => {
+        const friends = snapshot.val();
+        friendsList.innerHTML = '';
+        
+        if (!friends) {
+            friendsList.innerHTML = '<p class="no-friends">No friends to share with</p>';
+            return;
+        }
+        
+        Object.entries(friends).forEach(([friendUid, friendData]) => {
+            const friendItem = document.createElement('div');
+            friendItem.className = 'share-friend-item';
+            friendItem.innerHTML = `
+                <div class="friend-avatar">${friendData.name.charAt(0).toUpperCase()}</div>
+                <div class="friend-name">${friendData.name}</div>
+            `;
+            
+            friendItem.addEventListener('click', () => {
+                database.ref(`usernames/${friendUid}`).once('value', (usernameSnapshot) => {
+                    const username = usernameSnapshot.val();
+                    if (username) {
+                        document.getElementById('shareInputField').value = username;
+                    }
+                });
+            });
+            
+            friendsList.appendChild(friendItem);
+        });
+    });
+}
+
 function loadFriendRequests() {
     if (!window.currentUser) return;
     
