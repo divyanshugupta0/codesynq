@@ -62,6 +62,142 @@ body {
     max-width: 100vw;
 }
 
+/* Loading Screen */
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(10px);
+}
+
+.loading-content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(20px);
+}
+
+.loading-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.loading-logo i {
+    font-size: 4rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: logoGlow 2s ease-in-out infinite alternate;
+}
+
+.loading-brand {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+}
+
+.loading-animation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-dots {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+.dot:nth-child(1) { animation-delay: 0s; }
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+.dot:nth-child(4) { animation-delay: 0.6s; }
+.dot:nth-child(5) { animation-delay: 0.8s; }
+
+.loading-text {
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.loading-progress {
+    width: 200px;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes logoGlow {
+    0% { filter: drop-shadow(0 0 5px var(--primary-color)); }
+    100% { filter: drop-shadow(0 0 20px var(--accent-color)); }
+}
+
+@keyframes dotPulse {
+    0%, 100% { 
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    50% { 
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
 /* Header */
 .site-header {
     background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
@@ -145,64 +281,37 @@ body {
     min-width: 0;
 }
 
-.CodeMirror {
+/* Monaco Editor Styles */
+.monaco-editor {
     height: 100% !important;
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 14px;
     line-height: 1.5;
-    background: var(--bg-secondary) !important;
-    color: var(--text-primary) !important;
-    overflow: auto !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
 }
 
-.CodeMirror-scroll {
-    overflow: auto !important;
-}
-
-.CodeMirror-scrollbar-filler,
-.CodeMirror-gutter-filler {
-    background: var(--bg-secondary) !important;
-}
-
-/* Hide scrollbars but keep functionality */
-.CodeMirror-vscrollbar,
-.CodeMirror-hscrollbar {
-    display: none !important;
-}
-
-.CodeMirror-scroll {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-.CodeMirror-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-/* Theme-specific cursor colors */
-.CodeMirror-cursor {
-    border-left: 2px solid var(--text-primary) !important;
-}
-
-.CodeMirror-focused .CodeMirror-cursor {
-    border-left: 2px solid var(--text-primary) !important;
-}
-
-/* Light theme cursor override */
-[data-theme="light"] .CodeMirror-cursor,
-[data-theme="light"] .CodeMirror-focused .CodeMirror-cursor {
-    border-left: 2px solid #000000 !important;
-}
-
-.CodeMirror-gutters {
+.monaco-editor .margin {
     background: var(--bg-tertiary) !important;
-    border-right: 1px solid var(--border-color) !important;
 }
 
-.CodeMirror-linenumber {
-    color: var(--text-secondary) !important;
+.monaco-editor .monaco-editor-background {
+    background: var(--bg-secondary) !important;
+}
+
+/* Theme overrides for Monaco */
+[data-theme="dark"] .monaco-editor .monaco-editor-background {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] .monaco-editor .monaco-editor-background {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="blue"] .monaco-editor .monaco-editor-background {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="green"] .monaco-editor .monaco-editor-background {
+    background: var(--bg-secondary) !important;
 }
 
 /* Fallback editor styling */
@@ -1478,6 +1587,32 @@ body {
     text-overflow: ellipsis;
 }
 
+.tab-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.tab-menu {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.tab-menu:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
 .tab-close {
     width: 16px;
     height: 16px;
@@ -1496,6 +1631,34 @@ body {
 .tab-close:hover {
     background: var(--danger-color);
     color: white;
+}
+
+.tab-context-menu {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    min-width: 120px;
+}
+
+.tab-context-menu .menu-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.2s;
+}
+
+.tab-context-menu .menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.tab-context-menu .menu-item i {
+    font-size: 0.8rem;
+    color: var(--accent-color);
 }
 
 .add-tab-btn {
@@ -1518,32 +1681,25 @@ body {
     color: var(--accent-color);
 }
 
-/* Autocomplete Suggestions */
-.CodeMirror-hints {
+/* Monaco Editor Suggestions */
+.monaco-editor .suggest-widget {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: 8px !important;
     box-shadow: var(--shadow) !important;
-    font-family: 'Consolas', monospace !important;
-    font-size: 13px !important;
-    max-height: 200px !important;
-    overflow-y: auto !important;
 }
 
-.CodeMirror-hint {
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row {
     color: var(--text-primary) !important;
-    padding: 6px 12px !important;
-    border-radius: 4px !important;
-    margin: 2px !important;
-    cursor: pointer !important;
+    background: var(--bg-secondary) !important;
 }
 
-.CodeMirror-hint-active {
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
     background: var(--accent-color) !important;
     color: white !important;
 }
 
-.CodeMirror-hint:hover {
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover {
     background: var(--bg-tertiary) !important;
 }
 

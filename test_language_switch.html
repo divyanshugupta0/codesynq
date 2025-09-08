@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Language Switch Test</title>
+</head>
+<body>
+    <h1>Test Language Switching</h1>
+    
+    <select id="languageSelect">
+        <option value="javascript">JavaScript</option>
+        <option value="python">Python</option>
+        <option value="html">HTML</option>
+        <option value="css">CSS</option>
+        <option value="java">Java</option>
+        <option value="c">C</option>
+        <option value="cpp">C++</option>
+    </select>
+    
+    <textarea id="editor" rows="20" cols="80"></textarea>
+    
+    <script>
+        function getDefaultCode(language) {
+            const defaults = {
+                javascript: '// Welcome to CodeSynq!\n// JavaScript - Dynamic Programming Language\n// Press Ctrl+Space for IntelliSense suggestions\n\nconsole.log("Hello, World!");\n\n// Example: Variables and Functions\nconst greeting = "Welcome to JavaScript!";\nfunction showMessage(msg) {\n    console.log(msg);\n}\n\nshowMessage(greeting);',
+                
+                python: '# Welcome to CodeSynq!\n# Python - High-level Programming Language\n# Press Ctrl+Space for suggestions\n\nprint("Hello, World!")\n\n# Example: Variables and Functions\ngreeting = "Welcome to Python!"\ndef show_message(msg):\n    print(msg)\n\nshow_message(greeting)',
+                
+                html: '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>CodeSynq - HTML Page</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 40px; }\n        .container { max-width: 800px; margin: 0 auto; }\n        h1 { color: #333; }\n    </style>\n</head>\n<body>\n    <div class="container">\n        <h1>Hello, World!</h1>\n        <p>Welcome to HTML development with CodeSynq!</p>\n        <button onclick="alert(\'Hello from JavaScript!\')">Click Me</button>\n    </div>\n</body>\n</html>',
+                
+                css: '/* Welcome to CodeSynq! */\n/* CSS - Cascading Style Sheets */\n/* Press Ctrl+Space for property suggestions */\n\n/* Reset and Base Styles */\n* {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\nbody {\n    font-family: \'Arial\', sans-serif;\n    line-height: 1.6;\n    color: #333;\n    background: #f4f4f4;\n}\n\n.container {\n    max-width: 1200px;\n    margin: 0 auto;\n    padding: 20px;\n}\n\nh1 {\n    color: #2c3e50;\n    text-align: center;\n    margin-bottom: 30px;\n}',
+                
+                java: '// Welcome to CodeSynq!\n// Java - Object-Oriented Programming Language\n// Press Ctrl+Space for suggestions\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n        \n        // Example: Variables and Methods\n        String greeting = "Welcome to Java!";\n        showMessage(greeting);\n        \n        // Example: Simple calculation\n        int result = addNumbers(5, 3);\n        System.out.println("5 + 3 = " + result);\n    }\n    \n    public static void showMessage(String msg) {\n        System.out.println(msg);\n    }\n    \n    public static int addNumbers(int a, int b) {\n        return a + b;\n    }\n}',
+                
+                c: '// Welcome to CodeSynq!\n// C - Procedural Programming Language\n// Press Ctrl+Space for suggestions\n\n#include <stdio.h>\n#include <stdlib.h>\n\n// Function declarations\nvoid showMessage(const char* msg);\nint addNumbers(int a, int b);\n\nint main() {\n    printf("Hello, World!\\n");\n    \n    // Example: Variables and Functions\n    const char* greeting = "Welcome to C Programming!";\n    showMessage(greeting);\n    \n    // Example: Simple calculation\n    int result = addNumbers(5, 3);\n    printf("5 + 3 = %d\\n", result);\n    \n    return 0;\n}\n\nvoid showMessage(const char* msg) {\n    printf("%s\\n", msg);\n}\n\nint addNumbers(int a, int b) {\n    return a + b;\n}',
+                
+                cpp: '// Welcome to CodeSynq!\n// C++ - Object-Oriented Programming Language\n// Press Ctrl+Space for suggestions\n\n#include <iostream>\n#include <string>\n\nusing namespace std;\n\n// Function declarations\nvoid showMessage(const string& msg);\nint addNumbers(int a, int b);\n\nint main() {\n    cout << "Hello, World!" << endl;\n    \n    // Example: Variables and Functions\n    string greeting = "Welcome to C++!";\n    showMessage(greeting);\n    \n    // Example: Simple calculation\n    int result = addNumbers(5, 3);\n    cout << "5 + 3 = " << result << endl;\n    \n    return 0;\n}\n\nvoid showMessage(const string& msg) {\n    cout << msg << endl;\n}\n\nint addNumbers(int a, int b) {\n    return a + b;\n}'
+            };
+            return defaults[language] || defaults.javascript;
+        }
+        
+        // Test the language switching
+        document.getElementById('languageSelect').addEventListener('change', function(e) {
+            const newLanguage = e.target.value;
+            const editor = document.getElementById('editor');
+            const boilerplateCode = getDefaultCode(newLanguage);
+            editor.value = boilerplateCode;
+            console.log('Switched to', newLanguage, 'with boilerplate code');
+        });
+        
+        // Initialize with JavaScript
+        document.getElementById('editor').value = getDefaultCode('javascript');
+    </script>
+</body>
+</html>

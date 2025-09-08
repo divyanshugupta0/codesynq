@@ -4,16 +4,34 @@
     <title>CodeSynq - Professional Collaborative Coding</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/vscode-dark.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material.min.css" rel="stylesheet">
+    <!-- Monaco Editor will be loaded dynamically -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-logo">
+                <i class="fas fa-code"></i>
+                <span class="loading-brand">CodeSynq</span>
+            </div>
+            <div class="loading-animation">
+                <div class="loading-dots">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+            <div class="loading-text">Loading your workspace...</div>
+            <div class="loading-progress">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+    </div>
     <header class="site-header">
         <div class="header-content">
             <h1 class="site-title"><i class="fas fa-code"></i> CodeSynq <br><small style="font-size: 0.4em; font-weight: 300; font-style: italic; color: var(--text-secondary); display: block; margin-top: 25px; font-family: 'Georgia', serif; letter-spacing: 0.5px;">by: Divyanshu Gupta</small></h1>
@@ -157,14 +175,7 @@
                                     <option value="18">18px</option>
                                 </select>
                             </div>
-                            <div class="setting-item">
-                                <label>Tab Size:</label>
-                                <select id="tabSizeSelect">
-                                    <option value="2" selected>2 spaces</option>
-                                    <option value="4">4 spaces</option>
-                                    <option value="8">8 spaces</option>
-                                </select>
-                            </div>
+
                             <div class="setting-item">
                                 <label>
                                     <input type="checkbox" id="lineWrapToggle" checked> Line Wrapping
@@ -193,7 +204,7 @@
                 </div>
                 <button id="loginBtn" class="btn-primary" style="display: none;" title="Login to your account"><i class="fas fa-sign-in-alt"></i> Login</button>
                 <button id="signupBtn" class="btn-secondary" style="display: none;" title="Create new account"><i class="fas fa-user-plus"></i> Sign Up</button>
-                <div class="profile-dropdown" style="display: none;">
+                <div class="profile-dropdown">
                     <button id="profileBtn" class="btn-icon" title="User Profile"><i class="fas fa-user"></i></button>
                     <div id="profileMenu" class="dropdown-menu">
                         <div class="profile-info">
@@ -225,7 +236,7 @@
                     </select>
                     <button id="runCode" class="btn-primary" title="Run your code"><i class="fas fa-play"></i> Run</button>
                     <button id="saveCode" class="btn-secondary" title="Save your code"><i class="fas fa-save"></i> <span id="saveText">Save</span></button>
-                    <button id="livePreview" class="btn-toggle" title="Toggle live preview"><i class="fas fa-eye"></i> Live Preview</button>
+                    <button id="livePreview" class="btn-toggle" style="display: none;" title="Toggle live preview"><i class="fas fa-eye"></i> Live Preview</button>
                     <button id="shareCodeBtn" class="btn-secondary" style="display: none;" title="Share current code"><i class="fas fa-share"></i> Share Code</button>
                     <button id="seeSavedCodes" class="btn-secondary" style="display: none;" title="View saved codes"><i class="fas fa-folder-open"></i> Saved Codes</button>
                 </div>
@@ -252,6 +263,7 @@
                 </div>
             </div>
             <div id="tabBar" class="tab-bar" style="display: none;">
+                <button id="saveFolderBtn" class="btn-secondary" title="Save as Folder"><i class="fas fa-folder-plus"></i></button>
                 <div class="editor-tabs" id="editorTabs"></div>
                 <button id="addTabBtn" class="add-tab-btn" title="Add new tab"><i class="fas fa-plus"></i></button>
             </div>
@@ -334,26 +346,25 @@
     <!-- Saved Codes Modal -->
     <div id="savedCodesModal" class="modal">
         <div class="modal-content saved-codes-modal">
-            <h2>Saved Codes</h2>
+            <div class="modal-header">
+                <button id="backToList" class="btn-icon" style="display: none;" title="Back to list"><i class="fas fa-arrow-left"></i></button>
+                <h2 id="savedCodesTitle">Saved Codes</h2>
+            </div>
             <div id="savedCodesList" class="saved-codes-list"></div>
+            <div id="codePreviewContent" class="code-preview" style="display: none;"></div>
             <div class="modal-actions">
+                <button id="loadFolder" class="btn-primary" style="display: none;">Load Folder</button>
+                <button id="loadCode" class="btn-primary" style="display: none;">Load Code</button>
+                <button id="shareFolder" class="btn-secondary" style="display: none;">Share Folder</button>
+                <button id="shareCode" class="btn-secondary" style="display: none;">Share Code</button>
+                <button id="deleteFolder" class="btn-danger" style="display: none;">Delete Folder</button>
+                <button id="deleteCode" class="btn-danger" style="display: none;">Delete</button>
                 <button id="closeSavedCodes" class="btn-secondary" title="Close saved codes list">Close</button>
             </div>
         </div>
     </div>
     
-    <!-- Code Preview Modal -->
-    <div id="codePreviewModal" class="modal">
-        <div class="modal-content code-preview-modal">
-            <h2 id="previewTitle">Code Preview</h2>
-            <div id="codePreview" class="code-preview"></div>
-            <div class="modal-actions">
-                <button id="loadCode" class="btn-primary" title="Load this code into editor">Load Code</button>
-                <button id="deleteCode" class="btn-danger" title="Delete this saved code">Delete</button>
-                <button id="closePreview" class="btn-secondary" title="Close code preview">Close</button>
-            </div>
-        </div>
-    </div>
+
     
     <!-- Language Switch Confirmation Modal -->
     <div id="languageSwitchModal" class="modal">
@@ -390,6 +401,10 @@
             <p>Enter username to share your current code:</p>
             <div class="form-group">
                 <input type="text" id="shareToInput" placeholder="Enter username...">
+            </div>
+            <div class="form-group">
+                <label>Or select from friends:</label>
+                <div id="shareCodeFriendsList" class="share-friends-list"></div>
             </div>
             <div class="modal-actions">
                 <button id="confirmShare" class="btn-primary">Share Code</button>
@@ -458,23 +473,15 @@
     <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     
-    <!-- CodeMirror -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/javascript-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/html-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/css-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <!-- Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
     
     <!-- WebRTC -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     
     <!-- App Scripts -->
     <script src="app.js"></script>
+    <script src="shared_functions.js"></script>
     
     <!-- Firebase Configuration -->
     <script>
@@ -790,6 +797,7 @@
         document.getElementById('shareCodeBtn').onclick = () => {
             document.getElementById('shareCodeModal').style.display = 'block';
             document.getElementById('shareToInput').focus();
+            loadMainShareFriendsList();
         };
         
         document.getElementById('cancelShare').onclick = () => {
@@ -901,15 +909,31 @@
             codes.reverse().forEach(([id, code]) => {
                 const notificationItem = document.createElement('div');
                 notificationItem.className = `notification-item ${code.read ? 'read' : 'unread'}`;
-                notificationItem.innerHTML = `
-                    <div class="notification-sender">From: @${code.from} ${!code.read ? '<span class="unread-dot">●</span>' : ''}</div>
-                    <div class="notification-preview">${code.language} - ${code.code.substring(0, 50)}...</div>
-                    <div class="notification-time">${new Date(code.timestamp).toLocaleString()}</div>
-                `;
-                notificationItem.onclick = (e) => {
-                    e.stopPropagation();
-                    viewSharedCode(id, code.from, code.language, code.code);
-                };
+                
+                if (code.folderName && code.files) {
+                    // Folder notification
+                    notificationItem.innerHTML = `
+                        <div class="notification-sender">From: @${code.from} ${!code.read ? '<span class="unread-dot">●</span>' : ''}</div>
+                        <div class="notification-preview"><i class="fas fa-folder"></i> ${code.folderName} (${code.files.length} files)</div>
+                        <div class="notification-time">${new Date(code.timestamp).toLocaleString()}</div>
+                    `;
+                    notificationItem.onclick = (e) => {
+                        e.stopPropagation();
+                        viewSharedFolder(id, code);
+                    };
+                } else {
+                    // Single code notification
+                    notificationItem.innerHTML = `
+                        <div class="notification-sender">From: @${code.from} ${!code.read ? '<span class="unread-dot">●</span>' : ''}</div>
+                        <div class="notification-preview">${code.language} - ${code.code.substring(0, 50)}...</div>
+                        <div class="notification-time">${new Date(code.timestamp).toLocaleString()}</div>
+                    `;
+                    notificationItem.onclick = (e) => {
+                        e.stopPropagation();
+                        viewSharedCode(id, code.from, code.language, code.code);
+                    };
+                }
+                
                 notificationsList.appendChild(notificationItem);
             });
         }
@@ -932,8 +956,82 @@
             closeAllDropdowns();
         }
         
-        // Make viewSharedCode globally accessible
+        let currentSharedFolder = null;
+        
+        function viewSharedFolder(id, folderData) {
+            // Mark as read
+            database.ref(`sharedCodes/${window.currentUser.uid}/${id}/read`).set(true);
+            
+            // Store current shared folder data
+            currentSharedCode = { id, data: folderData, key: id };
+            currentSharedFolder = folderData;
+            
+            // Show folder files list like saved codes
+            document.getElementById('sharedCodeTitle').textContent = `${folderData.folderName} from @${folderData.from}`;
+            
+            const previewDiv = document.getElementById('sharedCodePreview');
+            previewDiv.innerHTML = '';
+            previewDiv.className = 'saved-codes-list';
+            
+            folderData.files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'saved-code-item';
+                fileItem.innerHTML = `
+                    <div class="saved-code-info">
+                        <div class="saved-code-name">${file.name}</div>
+                        <div class="saved-code-meta">
+                            ${file.content.split('\n').length} lines
+                        </div>
+                    </div>
+                    <div class="saved-code-language">${file.language}</div>
+                `;
+                
+                fileItem.addEventListener('click', () => {
+                    showSharedFilePreview(file, index);
+                });
+                
+                previewDiv.appendChild(fileItem);
+            });
+            
+            // Change Load Code button to Load Folder
+            document.getElementById('loadSharedCode').textContent = 'Load Folder';
+            document.getElementById('loadSharedCode').onclick = () => {
+                loadSharedCodeToEditor();
+            };
+            
+            document.getElementById('sharedCodePreviewModal').style.display = 'block';
+            closeAllDropdowns();
+        }
+        
+        function showSharedFilePreview(fileData, fileIndex) {
+            document.getElementById('sharedCodeTitle').innerHTML = `<button onclick="viewSharedFolder('${currentSharedCode.id}', currentSharedFolder)" style="background: none; border: none; color: var(--text-primary); font-size: 1.2em; margin-right: 10px; cursor: pointer;"><i class="fas fa-arrow-left"></i></button>${fileData.name} from @${currentSharedFolder.from}`;
+            
+            const previewDiv = document.getElementById('sharedCodePreview');
+            previewDiv.className = 'code-preview';
+            previewDiv.innerHTML = `
+                <pre style="white-space: pre-wrap; font-family: 'Consolas', monospace; background: var(--bg-secondary); padding: 1rem; border-radius: 4px; overflow: auto; max-height: 300px;">${fileData.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            `;
+            
+            // Change button back to Load Code for individual file
+            document.getElementById('loadSharedCode').textContent = 'Load Code';
+            document.getElementById('loadSharedCode').onclick = () => {
+                if (window.editor && monaco) {
+                    const languageSelect = document.getElementById('languageSelect');
+                    languageSelect.value = fileData.language;
+                    const language = getMonacoLanguage(fileData.language);
+                    monaco.editor.setModelLanguage(editor.getModel(), language);
+                    editor.setValue(fileData.content);
+                    updateLivePreviewVisibility(fileData.language);
+                    document.getElementById('sharedCodePreviewModal').style.display = 'none';
+                    showNotification(`Loaded ${fileData.name} from shared folder!`);
+                }
+            };
+        }
+        
+        // Make functions globally accessible
         window.viewSharedCode = viewSharedCode;
+        window.viewSharedFolder = viewSharedFolder;
+        window.showSharedFilePreview = showSharedFilePreview;
         
         // Make showCodeShareSuccessModal globally accessible
         window.showCodeShareSuccessModal = showCodeShareSuccessModal;
@@ -941,43 +1039,56 @@
         // Shared Code Modal Handlers
         document.getElementById('loadSharedCode').onclick = () => {
             if (currentSharedCode && window.editor) {
-                window.editor.setValue(currentSharedCode.code);
-                document.getElementById('languageSelect').value = currentSharedCode.language;
-                if (window.getCodeMirrorMode) {
-                    const mode = window.getCodeMirrorMode(currentSharedCode.language);
-                    window.editor.setOption('mode', mode);
+                if (currentSharedCode.data && currentSharedCode.data.folderName) {
+                    // Load folder using the global function
+                    loadSharedCodeToEditor();
+                } else {
+                    // Load single code
+                    window.editor.setValue(currentSharedCode.code);
+                    document.getElementById('languageSelect').value = currentSharedCode.language;
+                    if (window.getCodeMirrorMode) {
+                        const mode = window.getCodeMirrorMode(currentSharedCode.language);
+                        window.editor.setOption('mode', mode);
+                    }
+                    document.getElementById('sharedCodePreviewModal').style.display = 'none';
+                    alert(`Code from @${currentSharedCode.sender} loaded into editor!`);
                 }
-                document.getElementById('sharedCodePreviewModal').style.display = 'none';
-                alert(`Code from @${currentSharedCode.sender} loaded into editor!`);
             }
         };
         
         document.getElementById('saveSharedCode').onclick = () => {
             if (currentSharedCode && window.currentUser) {
-                const fileName = `shared_from_${currentSharedCode.sender}_${Date.now()}`;
-                const codeData = {
-                    name: fileName,
-                    content: currentSharedCode.code,
-                    language: currentSharedCode.language,
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    lastModified: new Date().toISOString()
-                };
-                
-                database.ref(`users/${window.currentUser.uid}/savedCodes`).push(codeData).then(() => {
-                    alert('Shared code saved successfully!');
-                }).catch((error) => {
-                    alert('Error saving code: ' + error.message);
-                });
+                if (currentSharedCode.data && currentSharedCode.data.folderName) {
+                    // Save folder using the global function
+                    saveSharedCodeToLibrary();
+                } else {
+                    // Save single code
+                    const fileName = `shared_from_${currentSharedCode.sender}_${Date.now()}`;
+                    const codeData = {
+                        name: fileName,
+                        content: currentSharedCode.code,
+                        language: currentSharedCode.language,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        lastModified: new Date().toISOString()
+                    };
+                    
+                    database.ref(`users/${window.currentUser.uid}/savedCodes`).push(codeData).then(() => {
+                        alert('Shared code saved successfully!');
+                    }).catch((error) => {
+                        alert('Error saving code: ' + error.message);
+                    });
+                }
             }
         };
         
         document.getElementById('deleteSharedCode').onclick = () => {
-            if (currentSharedCode && confirm('Are you sure you want to delete this shared code?')) {
+            const itemType = (currentSharedCode.data && currentSharedCode.data.folderName) ? 'folder' : 'code';
+            if (currentSharedCode && confirm(`Are you sure you want to delete this shared ${itemType}?`)) {
                 database.ref(`sharedCodes/${window.currentUser.uid}/${currentSharedCode.id}`).remove().then(() => {
                     document.getElementById('sharedCodePreviewModal').style.display = 'none';
-                    alert('Shared code deleted successfully!');
+                    alert(`Shared ${itemType} deleted successfully!`);
                 }).catch((error) => {
-                    alert('Error deleting shared code: ' + error.message);
+                    alert(`Error deleting shared ${itemType}: ` + error.message);
                 });
             }
         };
@@ -985,6 +1096,48 @@
         document.getElementById('closeSharedPreview').onclick = () => {
             document.getElementById('sharedCodePreviewModal').style.display = 'none';
         };
+        
+        // Load friends list for main share code modal
+        function loadMainShareFriendsList() {
+            const friendsList = document.getElementById('shareCodeFriendsList');
+            
+            if (!window.currentUser) {
+                friendsList.innerHTML = '<p class="no-friends">Login to see friends</p>';
+                return;
+            }
+            
+            friendsList.innerHTML = '<p class="loading-friends">Loading friends...</p>';
+            
+            database.ref(`friends/${window.currentUser.uid}`).once('value', (snapshot) => {
+                const friends = snapshot.val();
+                friendsList.innerHTML = '';
+                
+                if (!friends) {
+                    friendsList.innerHTML = '<p class="no-friends">No friends to share with</p>';
+                    return;
+                }
+                
+                Object.entries(friends).forEach(([friendUid, friendData]) => {
+                    const friendItem = document.createElement('div');
+                    friendItem.className = 'share-friend-item';
+                    friendItem.innerHTML = `
+                        <div class="friend-avatar">${friendData.name.charAt(0).toUpperCase()}</div>
+                        <div class="friend-name">${friendData.name}</div>
+                    `;
+                    
+                    friendItem.addEventListener('click', () => {
+                        database.ref(`usernames/${friendUid}`).once('value', (usernameSnapshot) => {
+                            const username = usernameSnapshot.val();
+                            if (username) {
+                                document.getElementById('shareToInput').value = username;
+                            }
+                        });
+                    });
+                    
+                    friendsList.appendChild(friendItem);
+                });
+            });
+        }
         
         // Profile dropdown is now handled in setupThemeAndSettings
     </script>
@@ -1153,5 +1306,53 @@
         <div class="pinned-chat-avatar"></div>
         <div class="pinned-chat-name"></div>
     </div>
+    
+    <!-- Save Folder Modal -->
+    <div id="saveFolderModal" class="modal">
+        <div class="modal-content">
+            <h2>Save as Folder</h2>
+            <div class="form-group">
+                <label>Folder Name:</label>
+                <input type="text" id="folderNameInput" placeholder="Enter folder name...">
+            </div>
+            <div class="modal-actions">
+                <button id="confirmSaveFolder" class="btn-primary">Save Folder</button>
+                <button id="cancelSaveFolder" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom Popup Modal -->
+    <div id="customPopupModal" class="modal">
+        <div class="modal-content">
+            <h2 id="popupTitle">Confirm</h2>
+            <p id="popupMessage">Are you sure?</p>
+            <div class="modal-actions">
+                <button id="popupConfirm" class="btn-primary">OK</button>
+                <button id="popupCancel" class="btn-secondary" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Share Input Modal -->
+    <div id="shareInputModal" class="modal">
+        <div class="modal-content">
+            <h2 id="shareInputTitle">Share</h2>
+            <div class="form-group">
+                <label id="shareInputLabel">Enter username:</label>
+                <input type="text" id="shareInputField" placeholder="Username...">
+            </div>
+            <div class="form-group">
+                <label>Or select from friends:</label>
+                <div id="shareFriendsList" class="share-friends-list"></div>
+            </div>
+            <div class="modal-actions">
+                <button id="shareInputConfirm" class="btn-primary">Share</button>
+                <button id="shareInputCancel" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+
     </body>
     </html>
