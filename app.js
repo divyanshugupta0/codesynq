@@ -241,7 +241,29 @@ function tryServerConnection() {
                 }
                 
                 if (data.language === 'javascript') {
-                    displayOutput(data.output, data.error);
+                    // Reset run button
+                    resetRunButton();
+                    
+                    // Clear console first
+                    const consolePanel = document.getElementById('console');
+                    if (consolePanel) {
+                        consolePanel.innerHTML = '';
+                    }
+                    
+                    // Display server output in custom console
+                    if (data.error) {
+                        displayConsoleOutput(data.error, 'error');
+                    } else if (data.output && data.output.trim()) {
+                        // Split output by lines and display each
+                        const lines = data.output.trim().split('\n');
+                        lines.forEach(line => {
+                            if (line.trim()) {
+                                displayConsoleOutput(line, 'log');
+                            }
+                        });
+                    } else {
+                        displayConsoleOutput('Code executed successfully', 'success');
+                    }
                 } else {
                     displayOutputInTerminal(data.output, data.error, data.complexity);
                 }
@@ -954,6 +976,8 @@ function setupUI() {
     // Make custom popup functions globally accessible
     window.showCustomPopup = showCustomPopup;
     window.showShareInput = showShareInput;
+    
+
     
     // Initialize friend system
     setTimeout(() => {
@@ -3039,6 +3063,52 @@ function displayOutput(output, error) {
     console.log('Output displayed in console');
 }
 
+function displayConsoleOutput(message, type = 'log') {
+    console.log('displayConsoleOutput called with:', message, type);
+    const consolePanel = document.getElementById('console');
+    if (!consolePanel) {
+        console.log('Console panel not found!');
+        return;
+    }
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let color = '#ffffff'; // default white
+    let icon = '';
+    
+    switch (type) {
+        case 'error':
+            color = '#f44336';
+            icon = '❌ ';
+            break;
+        case 'warn':
+            color = '#ff9800';
+            icon = '⚠️ ';
+            break;
+        case 'info':
+            color = '#2196f3';
+            icon = 'ℹ️ ';
+            break;
+        case 'success':
+            color = '#4caf50';
+            icon = '✅ ';
+            break;
+        default:
+            color = '#ffffff';
+            icon = '📝 ';
+    }
+    
+    const outputDiv = document.createElement('div');
+    outputDiv.style.cssText = `color: ${color}; margin: 2px 0; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.4; padding: 2px 0;`;
+    outputDiv.innerHTML = `[${timestamp}] ${icon}${message}`;
+    
+    consolePanel.appendChild(outputDiv);
+    consolePanel.scrollTop = consolePanel.scrollHeight;
+    
+    // Switch to console tab to show the output
+    switchTab('console');
+    console.log('Console output added and tab switched');
+}
+
 function displayOutputInTerminal(output, error, complexity) {
     console.log('displayOutputInTerminal called:', { output, error, complexity });
     resetRunButton();
@@ -3246,6 +3316,12 @@ function showPreview(html) {
 function resolveFileReferences(htmlContent) {
     let processedHtml = htmlContent;
     
+    // Clear console before processing JavaScript files
+    const consolePanel = document.getElementById('console');
+    if (consolePanel) {
+        consolePanel.innerHTML = '';
+    }
+    
     editorTabs.forEach(tab => {
         if (tab.language === 'css') {
             processedHtml = processedHtml.replace(
@@ -3253,9 +3329,48 @@ function resolveFileReferences(htmlContent) {
                 `<style>${tab.content}</style>`
             );
         } else if (tab.language === 'javascript') {
+            // Create custom console for JavaScript execution in HTML context
+            const customConsole = {
+                log: (...args) => {
+                    const message = args.map(arg => 
+                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                    ).join(' ');
+                    displayConsoleOutput(message, 'log');
+                },
+                error: (...args) => {
+                    const message = args.map(arg => 
+                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                    ).join(' ');
+                    displayConsoleOutput(message, 'error');
+                },
+                warn: (...args) => {
+                    const message = args.map(arg => 
+                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                    ).join(' ');
+                    displayConsoleOutput(message, 'warn');
+                },
+                info: (...args) => {
+                    const message = args.map(arg => 
+                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                    ).join(' ');
+                    displayConsoleOutput(message, 'info');
+                }
+            };
+            
+            // Execute JavaScript with custom console and inject the result
+            let jsWithConsole = '';
+            try {
+                const func = new Function('console', tab.content);
+                func(customConsole);
+                jsWithConsole = tab.content;
+            } catch (error) {
+                displayConsoleOutput(error.message, 'error');
+                jsWithConsole = tab.content;
+            }
+            
             processedHtml = processedHtml.replace(
                 new RegExp(`<script[^>]*src=["']${tab.name}["'][^>]*></script>`, 'gi'),
-                `<script>${tab.content}</script>`
+                `<script>${jsWithConsole}</script>`
             );
         }
     });
@@ -3282,24 +3397,58 @@ function runCodeLocally(code, language) {
     try {
         switch (language) {
             case 'javascript':
-                // Create a safe execution context
-                const originalLog = console.log;
-                let output = '';
-                console.log = (...args) => {
-                    output += args.join(' ') + '\n';
+                // Clear console before execution
+                const consolePanel = document.getElementById('console');
+                if (consolePanel) {
+                    consolePanel.innerHTML = '';
+                }
+                
+                // Create a safe execution context with custom console
+                const customConsole = {
+                    log: (...args) => {
+                        const message = args.map(arg => 
+                            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                        ).join(' ');
+                        displayConsoleOutput(message, 'log');
+                    },
+                    error: (...args) => {
+                        const message = args.map(arg => 
+                            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                        ).join(' ');
+                        displayConsoleOutput(message, 'error');
+                    },
+                    warn: (...args) => {
+                        const message = args.map(arg => 
+                            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                        ).join(' ');
+                        displayConsoleOutput(message, 'warn');
+                    },
+                    info: (...args) => {
+                        const message = args.map(arg => 
+                            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                        ).join(' ');
+                        displayConsoleOutput(message, 'info');
+                    }
                 };
                 
                 try {
-                    eval(code);
-                    if (isLivePreviewEnabled && hasConnectedFiles()) {
-                        // Stay on preview, don't switch to console
-                    } else {
-                        displayOutput(output || 'Code executed successfully');
+                    console.log('About to execute JavaScript code with custom console');
+                    console.log('Custom console object:', customConsole);
+                    
+                    // Execute code with custom console in scope
+                    const func = new Function('console', code);
+                    func(customConsole);
+                    
+                    console.log('JavaScript execution completed');
+                    console.log('Console panel children count:', consolePanel ? consolePanel.children.length : 'panel not found');
+                    
+                    // If no output was generated, show success message
+                    if (consolePanel && consolePanel.children.length === 0) {
+                        displayConsoleOutput('Code executed successfully', 'success');
                     }
                 } catch (error) {
-                    displayOutput('', error.message);
-                } finally {
-                    console.log = originalLog;
+                    console.log('JavaScript execution error:', error);
+                    displayConsoleOutput(error.message, 'error');
                 }
                 break;
                 
