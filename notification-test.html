@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Test - CodeSynq</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #5855eb;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Browser Notification Test</h1>
+        <p>Use this page to test if browser notifications are working properly on your device.</p>
+        
+        <div id="status"></div>
+        
+        <button onclick="requestPermission()">Request Notification Permission</button>
+        <button onclick="testNotification()">Send Test Notification</button>
+        <button onclick="testHighPriority()">Send High Priority Test</button>
+        <button onclick="testLocalhostFallback()" style="background: #dc2626;">Test Localhost Fallback</button>
+        
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Click "Request Notification Permission" first</li>
+            <li>Allow notifications when prompted by your browser</li>
+            <li>Click "Send Test Notification" to test</li>
+            <li>You should see a notification even if you switch to another tab</li>
+        </ol>
+        
+        <h3>Troubleshooting:</h3>
+        <ul>
+            <li>Make sure your browser supports notifications</li>
+            <li>Check if notifications are blocked in browser settings</li>
+            <li>Try refreshing the page if permission request doesn't appear</li>
+            <li>Some browsers require HTTPS for notifications to work</li>
+        </ul>
+    </div>
+
+    <script>
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function requestPermission() {
+            if (!('Notification' in window)) {
+                showStatus('❌ This browser does not support notifications', 'error');
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                showStatus('✅ Notifications are already enabled!', 'success');
+                return;
+            }
+
+            if (Notification.permission === 'denied') {
+                showStatus('❌ Notifications are blocked. Please enable them in browser settings.', 'error');
+                return;
+            }
+
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    showStatus('✅ Notification permission granted!', 'success');
+                } else {
+                    showStatus('❌ Notification permission denied', 'error');
+                }
+            });
+        }
+
+        function testNotification() {
+            if (!('Notification' in window)) {
+                showStatus('❌ This browser does not support notifications', 'error');
+                return;
+            }
+
+            if (Notification.permission !== 'granted') {
+                showStatus('❌ Please grant notification permission first', 'error');
+                return;
+            }
+
+            const options = {
+                body: 'This is a test notification from CodeSynq. If you can see this, notifications are working!',
+                icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiM2MzY2RjEiLz4KPHN2ZyB4PSIxNiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHN2Zz4KPC9zdmc+Cjwvc3ZnPgo8L3N2Zz4K',
+                tag: 'test-notification',
+                requireInteraction: false,
+                vibrate: [100]
+            };
+
+            try {
+                const notification = new Notification('🧪 CodeSynq Test', options);
+                
+                notification.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+
+                setTimeout(() => {
+                    notification.close();
+                }, 5000);
+
+                showStatus('✅ Test notification sent! Check if you received it.', 'success');
+            } catch (error) {
+                showStatus('❌ Error sending notification: ' + error.message, 'error');
+            }
+        }
+
+        function testHighPriority() {
+            if (!('Notification' in window)) {
+                showStatus('❌ This browser does not support notifications', 'error');
+                return;
+            }
+
+            if (Notification.permission !== 'granted') {
+                showStatus('❌ Please grant notification permission first', 'error');
+                return;
+            }
+
+            const options = {
+                body: 'This is a HIGH PRIORITY test notification. It should stay visible longer and may vibrate.',
+                icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiNkYzI2MjYiLz4KPHN2ZyB4PSIxNiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHN2Zz4KPC9zdmc+Cjwvc3ZnPgo8L3N2Zz4K',
+                tag: 'high-priority-test',
+                requireInteraction: true,
+                vibrate: [200, 100, 200, 100, 200]
+            };
+
+            try {
+                const notification = new Notification('🚨 HIGH PRIORITY TEST', options);
+                
+                notification.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+
+                showStatus('✅ High priority test notification sent! This one should stay visible until clicked.', 'success');
+            } catch (error) {
+                showStatus('❌ Error sending notification: ' + error.message, 'error');
+            }
+        }
+
+        // Check initial permission status
+        window.addEventListener('load', () => {
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+            
+            if (isLocalhost) {
+                showStatus('⚠️ Running on localhost - Browser notifications are disabled for security. Deploy to HTTPS for full functionality.', 'error');
+            } else if ('Notification' in window) {
+                showStatus(`Current permission status: ${Notification.permission}`, 'info');
+            } else {
+                showStatus('❌ This browser does not support notifications', 'error');
+            }
+        });
+        
+        // Add localhost test function
+        function testLocalhostFallback() {
+            // Create a prominent notification overlay for localhost testing
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                z-index: 10000;
+                max-width: 350px;
+                font-family: 'Segoe UI', sans-serif;
+                animation: slideIn 0.3s ease-out;
+            `;
+            
+            overlay.innerHTML = `
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <div style="font-size: 20px; margin-right: 10px;">🔔</div>
+                    <div style="font-weight: bold; font-size: 16px;">Localhost Test Notification</div>
+                    <button onclick="this.parentElement.parentElement.remove()" style="margin-left: auto; background: none; border: none; color: white; font-size: 18px; cursor: pointer;">×</button>
+                </div>
+                <div style="font-size: 14px; line-height: 1.4; margin-bottom: 10px;">This is how notifications will appear on localhost. On HTTPS, this would be a browser notification.</div>
+                <div style="font-size: 12px; opacity: 0.8;">📍 Localhost Mode - Browser notifications disabled</div>
+            `;
+            
+            // Add animation keyframes if not already added
+            if (!document.getElementById('notificationStyles')) {
+                const style = document.createElement('style');
+                style.id = 'notificationStyles';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { transform: translateX(100%); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            document.body.appendChild(overlay);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (overlay.parentNode) {
+                    overlay.style.animation = 'slideIn 0.3s ease-out reverse';
+                    setTimeout(() => overlay.remove(), 300);
+                }
+            }, 5000);
+            
+            showStatus('✅ Localhost fallback notification shown!', 'success');
+        }
+    </script>
+</body>
+</html>

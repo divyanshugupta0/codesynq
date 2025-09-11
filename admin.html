@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeSynq Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .admin-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .admin-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .admin-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .admin-header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .admin-content {
+            padding: 40px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .admin-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .admin-info h3 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .admin-info p {
+            color: #6c757d;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .admin-header h1 {
+                font-size: 2rem;
+            }
+            
+            .admin-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>🔧 CodeSynq Admin Panel</h1>
+            <p>Send notifications to all CodeSynq users</p>
+        </div>
+        
+        <div class="admin-content">
+            <div class="admin-info">
+                <h3>📢 Notification System</h3>
+                <p>Use this panel to send important announcements, updates, or alerts to all CodeSynq users. Notifications will appear as browser notifications and in-app messages.</p>
+            </div>
+            
+            <form id="notificationForm">
+                <div class="form-group">
+                    <label for="notificationTitle">Notification Title</label>
+                    <input type="text" id="notificationTitle" placeholder="Enter notification title..." required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="notificationMessage">Message</label>
+                    <textarea id="notificationMessage" placeholder="Enter your message here..." required></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="notificationType">Type</label>
+                        <select id="notificationType">
+                            <option value="info">Info</option>
+                            <option value="success">Success</option>
+                            <option value="warning">Warning</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="notificationPriority">Priority</label>
+                        <select id="notificationPriority">
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="notificationLink">Link (Optional)</label>
+                    <input type="url" id="notificationLink" placeholder="https://example.com">
+                </div>
+                
+                <button type="submit" class="btn">📤 Send Notification</button>
+            </form>
+            
+            <div id="status" class="status"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // Firebase configuration (replace with your config)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-SfBy_r93JDZOrYM8YUaokyNDXolVUzI",
+            authDomain: "codenexus-cbb96.firebaseapp.com",
+            databaseURL: "https://codenexus-cbb96-default-rtdb.firebaseio.com",
+            projectId: "codenexus-cbb96",
+            storageBucket: "codenexus-cbb96.firebasestorage.app",
+            messagingSenderId: "11546353758",
+            appId: "1:11546353758:web:e280574d9e6d9d6c1fd4cf",
+            measurementId: "G-NQMWQB4ZXK"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        let currentUser = null;
+        
+        // Check authentication
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                checkAdminStatus();
+            } else {
+                // Redirect to login or show login form
+                showStatus('Please login to access admin panel', 'error');
+            }
+        });
+        
+        function checkAdminStatus() {
+            database.ref(`users/${currentUser.uid}/isAdmin`).once('value', (snapshot) => {
+                if (snapshot.val() !== true) {
+                    showStatus('Access denied. Admin privileges required.', 'error');
+                    document.getElementById('notificationForm').style.display = 'none';
+                }
+            });
+        }
+        
+        document.getElementById('notificationForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const title = document.getElementById('notificationTitle').value.trim();
+            const message = document.getElementById('notificationMessage').value.trim();
+            const type = document.getElementById('notificationType').value;
+            const priority = document.getElementById('notificationPriority').value;
+            const link = document.getElementById('notificationLink').value.trim() || null;
+            
+            if (!title || !message) {
+                showStatus('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            sendNotification(title, message, type, priority, link);
+        });
+        
+        function sendNotification(title, message, type, priority, link) {
+            if (!currentUser) {
+                showStatus('Not authenticated', 'error');
+                return;
+            }
+            
+            // Show sending status
+            showStatus('📤 Sending notification...', 'info');
+            
+            const notificationData = {
+                title: title,
+                message: message,
+                type: type,
+                priority: priority,
+                link: link,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                sentBy: currentUser.uid,
+                sentByName: currentUser.displayName || currentUser.email
+            };
+            
+            database.ref('adminNotifications').push(notificationData).then(() => {
+                // Count online users for feedback
+                database.ref('onlineUsers').once('value', (snapshot) => {
+                    const onlineCount = snapshot.numChildren();
+                    showStatus(`✅ Notification sent to ${onlineCount} online users!`, 'success');
+                });
+                document.getElementById('notificationForm').reset();
+            }).catch((error) => {
+                showStatus('❌ Error: ' + error.message, 'error');
+            });
+        }
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

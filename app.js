@@ -12,6 +12,10 @@ let isTabMode = false;
 let editorTabs = [];
 let activeTabIndex = 0;
 
+// Admin notification system
+let adminNotificationListener = null;
+let messaging = null;
+
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing CodeNexus Pro...');
@@ -457,6 +461,9 @@ function setupProfile() {
                     }
                 }, 1500);
                 
+                // Setup admin notifications listener
+                setTimeout(() => setupAdminNotifications(), 2000);
+                
                 // Restore content immediately
                 setTimeout(() => {
                     if (editor && editor.getValue) {
@@ -466,6 +473,13 @@ function setupProfile() {
             } else if (!user && window.currentUser) {
                 console.log('User logged out, saving content');
                 saveEditorContent();
+                
+                // Cleanup admin notifications listener
+                if (adminNotificationListener) {
+                    database.ref('adminNotifications').off('child_added', adminNotificationListener);
+                    adminNotificationListener = null;
+                }
+                
                 window.currentUser = null;
                 
                 // Hide notifications and friends dropdowns
@@ -482,6 +496,10 @@ function setupProfile() {
                 // Load preferences for already logged-in users
                 setTimeout(() => loadUserPreferences(), 500);
                 setUserOnline();
+                
+                // Setup admin notifications listener
+                setTimeout(() => setupAdminNotifications(), 1000);
+                
                 // Load friend requests for already logged-in users
                 setTimeout(() => {
                     if (typeof loadFriendRequests === 'function') {
@@ -5043,6 +5061,268 @@ function rejectFriendRequest(fromUid) {
 
 window.acceptFriendRequest = acceptFriendRequest;
 window.rejectFriendRequest = rejectFriendRequest;
+
+// Admin Notification System
+function setupAdminNotifications() {
+    if (!window.currentUser || typeof database === 'undefined') return;
+    
+    // Request notification permission immediately
+    requestNotificationPermission();
+    
+    // Mark user as online for notifications
+    database.ref(`onlineUsers/${window.currentUser.uid}`).set({
+        name: window.currentUser.displayName || window.currentUser.email,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    });
+    
+    // Remove user from online list when they disconnect
+    database.ref(`onlineUsers/${window.currentUser.uid}`).onDisconnect().remove();
+    
+    // Listen for new admin notifications
+    adminNotificationListener = database.ref('adminNotifications').on('child_added', (snapshot) => {
+        const notification = snapshot.val();
+        const notificationId = snapshot.key;
+        
+        // Skip if this is the user who sent the notification
+        if (notification.sentBy === window.currentUser.uid) {
+            return;
+        }
+        
+        // Check if user has already seen this notification
+        database.ref(`users/${window.currentUser.uid}/seenNotifications/${notificationId}`).once('value', (seenSnapshot) => {
+            if (!seenSnapshot.exists()) {
+                // Mark as seen
+                database.ref(`users/${window.currentUser.uid}/seenNotifications/${notificationId}`).set(true);
+                
+                // Show browser notification
+                showBrowserNotification(notification);
+                
+                // Show in-app notification
+                showNotification(notification.message, notification.type || 'info');
+            }
+        });
+    });
+}
+
+function requestNotificationPermission() {
+    // Check if running on localhost
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+    
+    if (isLocalhost) {
+        showNotification('Running on localhost - browser notifications may not work. Using fallback system.', 'warning');
+        database.ref(`users/${window.currentUser.uid}/notificationsEnabled`).set(true);
+        return;
+    }
+    
+    if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                    database.ref(`users/${window.currentUser.uid}/notificationsEnabled`).set(true);
+                    showNotification('Browser notifications enabled!', 'success');
+                } else {
+                    showNotification('Please enable notifications to receive admin updates', 'warning');
+                }
+            });
+        } else if (Notification.permission === 'granted') {
+            database.ref(`users/${window.currentUser.uid}/notificationsEnabled`).set(true);
+        }
+    }
+}
+
+function showBrowserNotification(notification) {
+    // Check if running on localhost
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+    
+    if (isLocalhost) {
+        // Fallback for localhost - show prominent in-app notification
+        showLocalhostNotification(notification);
+        return;
+    }
+    
+    if ('Notification' in window && Notification.permission === 'granted') {
+        const options = {
+            body: notification.message,
+            icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiM2MzY2RjEiLz4KPHN2ZyB4PSIxNiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEzIDJMMTMgNkwxMSA2TDExIDJMMTMgMloiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0xOSA4TDIxIDhMMjEgMTBMMTkgMTBMMTkgOFoiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik01IDhMMyA4TDMgMTBMNSAxMEw1IDhaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNMTIgMjJDMTYuNDE4MyAyMiAyMCAxOC40MTgzIDIwIDE0QzIwIDkuNTgxNzIgMTYuNDE4MyA2IDEyIDZDNy41ODE3MiA2IDQgOS41ODE3MiA0IDE0QzQgMTguNDE4MyA3LjU4MTcyIDIyIDEyIDIyWiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPHN2Zz4KPC9zdmc+Cjwvc3ZnPgo8L3N2Zz4K',
+            badge: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiM2MzY2RjEiLz4KPHN2ZyB4PSIxNiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHN2Zz4KPC9zdmc+Cjwvc3ZnPgo8L3N2Zz4K',
+            tag: `codesynq-${Date.now()}`,
+            requireInteraction: notification.priority === 'high',
+            silent: false,
+            vibrate: notification.priority === 'high' ? [200, 100, 200] : [100]
+        };
+        
+        try {
+            const browserNotification = new Notification(notification.title || 'CodeSynq Admin', options);
+            
+            // Auto close after duration based on priority
+            const duration = notification.priority === 'high' ? 10000 : notification.priority === 'low' ? 3000 : 6000;
+            setTimeout(() => {
+                browserNotification.close();
+            }, duration);
+            
+            // Handle click
+            browserNotification.onclick = function() {
+                window.focus();
+                this.close();
+                
+                // If notification has a link, open it
+                if (notification.link) {
+                    window.open(notification.link, '_blank');
+                }
+            };
+            
+            console.log('Browser notification sent:', notification.title);
+        } catch (error) {
+            console.error('Error showing browser notification:', error);
+            // Fallback to localhost notification if browser notification fails
+            showLocalhostNotification(notification);
+        }
+    } else {
+        console.log('Browser notifications not available or not permitted');
+        // Fallback to localhost notification
+        showLocalhostNotification(notification);
+    }
+}
+
+function showLocalhostNotification(notification) {
+    // Create a prominent notification overlay for localhost testing
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        z-index: 10000;
+        max-width: 350px;
+        font-family: 'Segoe UI', sans-serif;
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    overlay.innerHTML = `
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <div style="font-size: 20px; margin-right: 10px;">🔔</div>
+            <div style="font-weight: bold; font-size: 16px;">${notification.title || 'Admin Notification'}</div>
+            <button onclick="this.parentElement.parentElement.remove()" style="margin-left: auto; background: none; border: none; color: white; font-size: 18px; cursor: pointer;">×</button>
+        </div>
+        <div style="font-size: 14px; line-height: 1.4; margin-bottom: 10px;">${notification.message}</div>
+        <div style="font-size: 12px; opacity: 0.8;">📍 Localhost Mode - Browser notifications disabled</div>
+        ${notification.link ? `<div style="margin-top: 10px;"><a href="${notification.link}" target="_blank" style="color: #fff; text-decoration: underline;">Open Link</a></div>` : ''}
+    `;
+    
+    // Add animation keyframes if not already added
+    if (!document.getElementById('notificationStyles')) {
+        const style = document.createElement('style');
+        style.id = 'notificationStyles';
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(overlay);
+    
+    // Auto remove after duration based on priority
+    const duration = notification.priority === 'high' ? 10000 : notification.priority === 'low' ? 3000 : 6000;
+    setTimeout(() => {
+        if (overlay.parentNode) {
+            overlay.style.animation = 'slideIn 0.3s ease-out reverse';
+            setTimeout(() => overlay.remove(), 300);
+        }
+    }, duration);
+    
+    console.log('Localhost notification shown:', notification.title);
+}
+
+// Admin function to send notifications (for admin panel)
+function sendAdminNotification(title, message, type = 'info', priority = 'normal', link = null) {
+    if (!window.currentUser || typeof database === 'undefined') {
+        console.error('User not logged in or database not available');
+        return Promise.reject('User not logged in');
+    }
+    
+    return new Promise((resolve, reject) => {
+        // Check if user has admin privileges
+        database.ref(`users/${window.currentUser.uid}/isAdmin`).once('value', (snapshot) => {
+            if (snapshot.val() === true) {
+                const notificationData = {
+                    title: title,
+                    message: message,
+                    type: type, // 'info', 'success', 'warning', 'error'
+                    priority: priority, // 'low', 'normal', 'high'
+                    link: link,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    sentBy: window.currentUser.uid,
+                    sentByName: window.currentUser.displayName || window.currentUser.email
+                };
+                
+                // Send notification to database
+                database.ref('adminNotifications').push(notificationData).then(() => {
+                    // Count online users for feedback
+                    database.ref('onlineUsers').once('value', (onlineSnapshot) => {
+                        const onlineCount = onlineSnapshot.numChildren();
+                        showNotification(`Notification sent to ${onlineCount} online users!`, 'success');
+                        resolve({ success: true, onlineUsers: onlineCount });
+                    });
+                }).catch((error) => {
+                    showNotification('Error sending notification: ' + error.message, 'error');
+                    reject(error);
+                });
+            } else {
+                showNotification('You do not have admin privileges', 'error');
+                reject('No admin privileges');
+            }
+        });
+    });
+}
+
+// Make admin function globally accessible for testing
+window.sendAdminNotification = sendAdminNotification;
+
+// Test function for localhost
+window.testLocalhostNotification = function() {
+    showLocalhostNotification({
+        title: 'Test Notification',
+        message: 'This is a test notification for localhost development. Browser notifications are disabled on localhost.',
+        type: 'info',
+        priority: 'normal'
+    });
+};
+
+// Function to make a user admin (for initial setup)
+function makeUserAdmin(userEmail) {
+    if (!window.currentUser || typeof database === 'undefined') {
+        console.error('User not logged in or database not available');
+        return;
+    }
+    
+    database.ref('usernameToUid').orderByValue().once('value', (snapshot) => {
+        const users = snapshot.val();
+        let targetUid = null;
+        
+        // Find user by email
+        Object.entries(users || {}).forEach(([username, uid]) => {
+            database.ref(`users/${uid}/email`).once('value', (emailSnapshot) => {
+                if (emailSnapshot.val() === userEmail) {
+                    targetUid = uid;
+                    database.ref(`users/${uid}/isAdmin`).set(true).then(() => {
+                        console.log(`Made ${userEmail} an admin`);
+                        showNotification(`Made ${userEmail} an admin`, 'success');
+                    });
+                }
+            });
+        });
+    });
+}
+
+// Make function globally accessible
+window.makeUserAdmin = makeUserAdmin;
 
 // Community System Functions
 let currentCommunity = null;
