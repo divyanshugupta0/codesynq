@@ -597,6 +597,11 @@ function setupEditor() {
                 return;
             }
             
+            // Update live preview if enabled
+            if (isLivePreviewEnabled) {
+                updateLivePreview();
+            }
+            
             // Auto-save to cache for non-logged users
             if (!window.currentUser) {
                 clearTimeout(window.autoSaveTimeout);
@@ -882,6 +887,13 @@ function setupUI() {
     document.getElementById('addTabBtn').addEventListener('click', addNewTab);
     document.getElementById('saveFolderBtn').addEventListener('click', showSaveFolderModal);
     
+    // Tab mode modal handlers
+    document.getElementById('continueWithCode').addEventListener('click', enableTabModeWithCurrentCode);
+    document.getElementById('startNewFile').addEventListener('click', enableTabModeWithNewFile);
+    document.getElementById('cancelTabMode').addEventListener('click', () => {
+        document.getElementById('tabModeModal').style.display = 'none';
+    });
+    
     // Save folder modal handlers
     document.getElementById('confirmSaveFolder').addEventListener('click', saveFolderWithName);
     document.getElementById('cancelSaveFolder').addEventListener('click', () => {
@@ -965,29 +977,106 @@ function setupUI() {
 }
 
 function toggleTabMode() {
-    isTabMode = !isTabMode;
     const tabModeBtn = document.getElementById('tabModeBtn');
     
-    if (isTabMode) {
-        tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
-        tabModeBtn.classList.add('active');
-        document.getElementById('tabBar').style.display = 'flex';
-        
-        // Initialize with first tab
-        if (editorTabs.length === 0) {
-            const currentLang = document.getElementById('languageSelect').value;
-            const fileName = getDefaultFileName(currentLang);
-            addTab(fileName, editor ? editor.getValue() : getDefaultCode(currentLang), currentLang);
-            activeTabIndex = 0;
-            renderTabs();
-        }
+    if (!isTabMode) {
+        // Show confirmation popup when enabling tab mode
+        document.getElementById('tabModeModal').style.display = 'block';
     } else {
+        // Disable tab mode
+        isTabMode = false;
         tabModeBtn.innerHTML = '<i class="fas fa-folder-open"></i> Tab Mode';
         tabModeBtn.classList.remove('active');
         document.getElementById('tabBar').style.display = 'none';
         editorTabs = [];
         activeTabIndex = 0;
     }
+}
+
+function enableTabModeWithCurrentCode() {
+    isTabMode = true;
+    const tabModeBtn = document.getElementById('tabModeBtn');
+    
+    tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
+    tabModeBtn.classList.add('active');
+    document.getElementById('tabBar').style.display = 'flex';
+    
+    // Initialize with current code
+    const currentLang = document.getElementById('languageSelect').value;
+    const currentCode = editor ? editor.getValue() : getDefaultCode(currentLang);
+    const fileName = getDefaultFileName(currentLang);
+    
+    editorTabs = [];
+    addTab(fileName, currentCode, currentLang);
+    activeTabIndex = 0;
+    renderTabs();
+    
+    document.getElementById('tabModeModal').style.display = 'none';
+    showNotification('Tab mode enabled with current code!');
+}
+
+function enableTabModeWithNewFile() {
+    isTabMode = true;
+    const tabModeBtn = document.getElementById('tabModeBtn');
+    
+    tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
+    tabModeBtn.classList.add('active');
+    document.getElementById('tabBar').style.display = 'flex';
+    
+    // Initialize with new empty tab (no default language)
+    editorTabs = [];
+    const newTab = addTab('New Tab', '', 'javascript');
+    activeTabIndex = 0;
+    renderTabs();
+    
+    // Set language selector to placeholder and require user selection
+    const langSelect = document.getElementById('languageSelect');
+    
+    // Add placeholder option if not exists
+    if (!langSelect.querySelector('option[value=""]')) {
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '-- Select Language --';
+        placeholderOption.disabled = true;
+        langSelect.insertBefore(placeholderOption, langSelect.firstChild);
+    }
+    
+    langSelect.value = '';
+    langSelect.style.animation = 'languagePulse 0.5s ease-in-out infinite';
+    
+    // Clear editor content
+    if (editor) {
+        editor.setValue('');
+    }
+    
+    // Listen for language change
+    const handleLanguageChange = () => {
+        if (langSelect.value === '') return;
+        
+        langSelect.style.animation = '';
+        const selectedLang = langSelect.value;
+        let fileName = getDefaultFileName(selectedLang);
+        
+        // Update tab with selected language
+        editorTabs[activeTabIndex].name = fileName;
+        editorTabs[activeTabIndex].language = selectedLang;
+        editorTabs[activeTabIndex].content = getDefaultCode(selectedLang);
+        
+        // Remove placeholder option
+        const placeholder = langSelect.querySelector('option[value=""]');
+        if (placeholder) placeholder.remove();
+        
+        renderTabs();
+        switchToTab(activeTabIndex);
+        updateLivePreviewVisibility(selectedLang);
+        
+        langSelect.removeEventListener('change', handleLanguageChange);
+    };
+    
+    langSelect.addEventListener('change', handleLanguageChange);
+    
+    document.getElementById('tabModeModal').style.display = 'none';
+    showNotification('Tab mode enabled! Please select a language for your first tab.');
 }
 
 function getMonacoLanguage(language) {
@@ -1244,7 +1333,7 @@ function addNewTab() {
     }
     
     langSelect.value = '';
-    langSelect.style.animation = 'pulse 0.5s ease-in-out infinite';
+    langSelect.style.animation = 'languagePulse 0.5s ease-in-out infinite';
     
     // Listen for language change
     const handleLanguageChange = () => {
@@ -1321,13 +1410,26 @@ function switchToTab(index) {
     activeTabIndex = index;
     const tab = editorTabs[activeTabIndex];
     
-    // Load tab content
+    // Load tab content and update language selector
     if (editor && monaco) {
-        editor.setValue(tab.content);
-        document.getElementById('languageSelect').value = tab.language;
+        // Update language selector first to avoid default JS boilerplate
+        const languageSelect = document.getElementById('languageSelect');
+        languageSelect.value = tab.language;
+        languageSelect.dataset.previousValue = tab.language;
+        
+        // Set Monaco editor language
         const language = getMonacoLanguage(tab.language);
         monaco.editor.setModelLanguage(editor.getModel(), language);
+        
+        // Load the actual file content
+        editor.setValue(tab.content);
+        
         updateLivePreviewVisibility(tab.language);
+        
+        // Update live preview if enabled
+        if (isLivePreviewEnabled) {
+            updateLivePreview();
+        }
     }
     
     renderTabs();
@@ -1393,6 +1495,7 @@ function updateSavedFolder() {
         // Reset hasChanges for all tabs
         editorTabs.forEach(tab => tab.hasChanges = false);
         renderTabs();
+        updateSaveButtonText(); // Update save button to show folder saved
         showNotification(`Updated folder "${currentSavedFolder.name}"!`);
     }).catch((error) => {
         showNotification('Error updating folder: ' + error.message);
@@ -1493,9 +1596,13 @@ function openFolderFiles(folderKey, folderData) {
 function loadFolderInTabMode() {
     if (!currentFolder) return;
     
-    // Enable tab mode if not already enabled
+    // Enable tab mode directly without popup since folder has language info
     if (!isTabMode) {
-        toggleTabMode();
+        isTabMode = true;
+        const tabModeBtn = document.getElementById('tabModeBtn');
+        tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
+        tabModeBtn.classList.add('active');
+        document.getElementById('tabBar').style.display = 'flex';
     }
     
     // Clear existing tabs
@@ -1513,10 +1620,25 @@ function loadFolderInTabMode() {
         name: currentFolder.name
     };
     
-    // Switch to first tab
-    if (editorTabs.length > 0) {
+    // Load first tab properly with correct language and content
+    if (editorTabs.length > 0 && editor && monaco) {
+        const firstTab = editorTabs[0];
+        
+        // Set language selector to first file's language
+        const languageSelect = document.getElementById('languageSelect');
+        languageSelect.value = firstTab.language;
+        languageSelect.dataset.previousValue = firstTab.language;
+        
+        // Set Monaco editor language
+        const language = getMonacoLanguage(firstTab.language);
+        monaco.editor.setModelLanguage(editor.getModel(), language);
+        
+        // Load the actual file content
+        editor.setValue(firstTab.content);
+        
+        updateLivePreviewVisibility(firstTab.language);
+        
         activeTabIndex = 0;
-        switchToTab(0);
     }
     
     renderTabs();
@@ -1677,6 +1799,7 @@ function saveFolderWithName() {
         // Reset hasChanges for all tabs
         editorTabs.forEach(tab => tab.hasChanges = false);
         renderTabs();
+        updateSaveButtonText(); // Update save button to show folder saved
         
         document.getElementById('saveFolderModal').style.display = 'none';
         document.getElementById('folderNameInput').value = '';
@@ -2617,7 +2740,16 @@ function updateSaveButtonText() {
     const saveText = document.getElementById('saveText');
     if (!saveText) return;
     
-    if (currentSavedFile) {
+    if (isTabMode && currentSavedFolder) {
+        // In tab mode, show folder name
+        const hasAnyChanges = editorTabs.some(tab => tab.hasChanges);
+        if (hasAnyChanges) {
+            saveText.textContent = `Save "${currentSavedFolder.name}"*`;
+        } else {
+            saveText.textContent = `"${currentSavedFolder.name}" Saved`;
+        }
+    } else if (currentSavedFile) {
+        // In normal mode, show file name
         if (hasUnsavedChanges) {
             saveText.textContent = `Save "${currentSavedFile.name}"*`;
         } else {
@@ -3286,6 +3418,11 @@ let livePreviewDisposable = null;
 
 function updateLivePreview() {
     if (!isLivePreviewEnabled) return;
+    
+    // Save current tab content first in tab mode
+    if (isTabMode && editorTabs[activeTabIndex] && editor) {
+        editorTabs[activeTabIndex].content = editor.getValue();
+    }
     
     const language = document.getElementById('languageSelect').value;
     const htmlTab = editorTabs.find(tab => tab.language === 'html');
