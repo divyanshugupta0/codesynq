@@ -323,7 +323,8 @@ function executeJava(code, socket, roomId, callback) {
         className = `${className}${sessionId}`;
     } else {
         // If no public class found, wrap code in a Main class
-        code = `public class ${className} {
+        code = `import java.util.*;
+        public class ${className} {
     public static void main(String[] args) {
 ${code.split('\n').map(line => '        ' + line).join('\n')}
     }
