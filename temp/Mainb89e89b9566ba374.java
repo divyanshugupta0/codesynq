@@ -1,0 +1,29 @@
+// Welcome to CodeSynq!
+// Java - Object-Oriented Programming Language
+// Press Ctrl+Space for suggestions
+
+import java.util.Scanner;
+public class Mainb89e89b9566ba374 {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        int a = sc.nextInt();
+        System.out.println(a);
+        System.out.println("Hello from CodeSynq!");
+        
+        // Example: Variables and Methods
+        String greeting = "Welcome to CodeSynq-Java!";
+        showMessage(greeting);
+        
+        // Example: Simple calculation
+        int result = addNumbers(5, 3);
+        System.out.println("5 + 3 = " + result);
+    }
+    
+    public static void showMessage(String msg) {
+        System.out.println(msg);
+    }
+    
+    public static int addNumbers(int a, int b) {
+        return a + b;
+    }
+}

@@ -339,7 +339,9 @@ ${code.split('\n').map(line => '        ' + line).join('\n')}
     let compileError = '';
     
     compileProcess.stderr.on('data', (data) => {
-        compileError += data.toString();
+        const text = data.toString();
+        compileError += text;
+        socket.emit('terminal-output', { text, type: 'stderr' });
     });
     
     compileProcess.on('close', (code) => {

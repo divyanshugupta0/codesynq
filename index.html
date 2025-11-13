@@ -234,7 +234,7 @@
                         <option value="c">C</option>
                         <option value="cpp">C++</option>
                     </select>
-                    <button id="runCode" class="btn-primary" title="Run your code"><i class="fas fa-play"></i> Run</button>
+                    <button id="runCode" class="btn-primary" title="Run your code"><i class="fas fa-play"></i> Run(F5)</button>
                     <button id="saveCode" class="btn-secondary" title="Save your code"><i class="fas fa-save"></i> <span id="saveText">Save</span></button>
                     <button id="livePreview" class="btn-toggle" style="display: none;" title="Toggle live preview"><i class="fas fa-eye"></i> Live Preview</button>
                     <button id="shareCodeBtn" class="btn-secondary" style="display: none;" title="Share current code"><i class="fas fa-share"></i> Share Code</button>
@@ -264,7 +264,7 @@
             </div>
             <div id="tabBar" class="tab-bar" style="display: none;">
                 <button id="saveFolderBtn" class="btn-secondary" title="Save as Folder"><i class="fas fa-folder-plus"></i></button>
-                <div class="editor-tabs" id="editorTabs"></div>
+                <div class="editor-tabs" id="editorTabs" style="overflow-x: auto; flex: 1; display: flex; white-space: nowrap;"></div>
                 <button id="addTabBtn" class="add-tab-btn" title="Add new tab"><i class="fas fa-plus"></i></button>
             </div>
             <div class="editor-container" id="editor"></div>
@@ -994,6 +994,15 @@
                 previewDiv.appendChild(fileItem);
             });
             
+            // Restore or reset scroll position for shared folder view
+            setTimeout(() => {
+                if (window.sharedFolderScrollPos !== undefined) {
+                    previewDiv.scrollTop = window.sharedFolderScrollPos;
+                } else {
+                    previewDiv.scrollTop = 0;
+                }
+            }, 100);
+            
             // Change Load Code button to Load Folder
             document.getElementById('loadSharedCode').textContent = 'Load Folder';
             document.getElementById('loadSharedCode').onclick = () => {
@@ -1005,13 +1014,23 @@
         }
         
         function showSharedFilePreview(fileData, fileIndex) {
+            // Save current scroll position before switching to file preview
+            const previewDiv = document.getElementById('sharedCodePreview');
+            if (previewDiv && previewDiv.className === 'saved-codes-list') {
+                window.sharedFolderScrollPos = previewDiv.scrollTop;
+            }
+            
             document.getElementById('sharedCodeTitle').innerHTML = `<button onclick="viewSharedFolder('${currentSharedCode.id}', currentSharedFolder)" style="background: none; border: none; color: var(--text-primary); font-size: 1.2em; margin-right: 10px; cursor: pointer;"><i class="fas fa-arrow-left"></i></button>${fileData.name} from @${currentSharedFolder.from}`;
             
-            const previewDiv = document.getElementById('sharedCodePreview');
             previewDiv.className = 'code-preview';
             previewDiv.innerHTML = `
                 <pre style="white-space: pre-wrap; font-family: 'Consolas', monospace; background: var(--bg-secondary); padding: 1rem; border-radius: 4px; overflow: auto; max-height: 300px;">${fileData.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
             `;
+            
+            // Reset scroll position for file preview
+            setTimeout(() => {
+                previewDiv.scrollTop = 0;
+            }, 100);
             
             // Change button back to Load Code for individual file
             document.getElementById('loadSharedCode').textContent = 'Load Code';

@@ -12,6 +12,109 @@ let isTabMode = false;
 let editorTabs = [];
 let activeTabIndex = 0;
 
+// Auto-save functionality
+function saveEditorState() {
+    if (!editor) return;
+    
+    const state = {
+        isTabMode: isTabMode,
+        timestamp: Date.now()
+    };
+    
+    if (isTabMode) {
+        // Save current tab content
+        if (editorTabs[activeTabIndex]) {
+            editorTabs[activeTabIndex].content = editor.getValue();
+        }
+        state.editorTabs = editorTabs;
+        state.activeTabIndex = activeTabIndex;
+    } else {
+        state.content = editor.getValue();
+        state.language = document.getElementById('languageSelect').value;
+    }
+    
+    localStorage.setItem('codesynq_editor_state', JSON.stringify(state));
+}
+
+function loadEditorState() {
+    const saved = localStorage.getItem('codesynq_editor_state');
+    if (!saved) return false;
+    
+    try {
+        const state = JSON.parse(saved);
+        // Only restore if saved within last 24 hours
+        if (Date.now() - state.timestamp > 24 * 60 * 60 * 1000) {
+            localStorage.removeItem('codesynq_editor_state');
+            return false;
+        }
+        
+        if (editor && state.isTabMode && state.editorTabs) {
+            // Restore tab mode
+            isTabMode = true;
+            const tabModeBtn = document.getElementById('tabModeBtn');
+            tabModeBtn.innerHTML = '<i class="fas fa-times"></i> Exit Tab Mode';
+            tabModeBtn.classList.add('active');
+            document.getElementById('tabBar').style.display = 'flex';
+            
+            editorTabs = state.editorTabs;
+            activeTabIndex = state.activeTabIndex || 0;
+            const activeTab = editorTabs[activeTabIndex];
+            
+            // Set language and content directly without triggering boilerplate
+            if (activeTab) {
+                const languageSelect = document.getElementById('languageSelect');
+                languageSelect.value = activeTab.language;
+                const language = getMonacoLanguage(activeTab.language);
+                monaco.editor.setModelLanguage(editor.getModel(), language);
+                editor.setValue(activeTab.content);
+                updateLivePreviewVisibility(activeTab.language);
+                resetRunButton();
+            }
+            
+            renderTabs();
+            return true;
+        } else if (editor && state.content && state.language) {
+            // Restore single file mode
+            document.getElementById('languageSelect').value = state.language;
+            const language = getMonacoLanguage(state.language);
+            monaco.editor.setModelLanguage(editor.getModel(), language);
+            editor.setValue(state.content);
+            updateLivePreviewVisibility(state.language);
+            resetRunButton();
+            return true;
+        }
+    } catch (e) {
+        localStorage.removeItem('codesynq_editor_state');
+    }
+    return false;
+}
+
+// Auto-save on content change
+function setupAutoSave() {
+    if (!editor) return;
+    
+    editor.onDidChangeModelContent(() => {
+        saveEditorState();
+    });
+    
+    document.getElementById('languageSelect').addEventListener('change', () => {
+        saveEditorState();
+    });
+}
+
+// Save state before page unload
+window.addEventListener('beforeunload', () => {
+    saveEditorState();
+});
+
+// Prevent F5 from reloading page globally
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'F5') {
+        e.preventDefault();
+        return false;
+    }
+});
+
 // Admin notification system
 let adminNotificationListener = null;
 let messaging = null;
@@ -42,6 +145,20 @@ document.addEventListener('keydown', function(e) {
     if (e.ctrlKey && e.key === 'w' && isTabMode) {
         e.preventDefault();
         closeTab(activeTabIndex);
+    }
+    
+    // F5 key for running backend languages
+    if (e.key === 'F5') {
+        e.preventDefault();
+        const language = document.getElementById('languageSelect').value;
+        const backendLanguages = ['python', 'java', 'c', 'cpp', 'javascript'];
+        
+        if (backendLanguages.includes(language)) {
+            executeCode();
+        } else {
+            showNotification(`F5 shortcut is only available for backend languages (Python, Java, C, C++, JavaScript)`);
+        }
+        return false;
     }
 });
 
@@ -584,6 +701,15 @@ function setupEditor() {
             }
         });
         
+        // Try to restore previous state
+        const restored = loadEditorState();
+        if (restored) {
+            showNotification('Previous work restored!');
+        }
+        
+        // Setup auto-save
+        setupAutoSave();
+        
         // Register custom snippets for common shortcuts
         registerCustomSnippets();
         
@@ -724,6 +850,7 @@ function setupUI() {
                 editor.setValue(boilerplateCode);
                 
                 updateLivePreviewVisibility(newLanguage);
+                resetRunButton(); // Update button text for new language
                 showNotification(`Switched to ${newLanguage.charAt(0).toUpperCase() + newLanguage.slice(1)} with boilerplate code`);
             }
             
@@ -778,6 +905,22 @@ function setupUI() {
     });
     
     document.getElementById('closeSavedCodes').addEventListener('click', () => {
+        // Save current scroll position before closing
+        const list = document.getElementById('savedCodesList');
+        if (list && list.style.display !== 'none') {
+            if (currentFolder) {
+                savedScrollPositions.folderList = list.scrollTop;
+            } else {
+                savedScrollPositions.mainList = list.scrollTop;
+            }
+        }
+        
+        // Save preview scroll position if in preview mode
+        const previewContent = document.getElementById('codePreviewContent');
+        if (previewContent && previewContent.style.display === 'block') {
+            savedScrollPositions.preview = previewContent.scrollTop;
+        }
+        
         document.getElementById('savedCodesModal').style.display = 'none';
         resetSavedCodesModal();
         cleanupSavedCodesListeners();
@@ -785,6 +928,11 @@ function setupUI() {
     
     document.getElementById('backToList').addEventListener('click', () => {
         if (document.getElementById('codePreviewContent').style.display === 'block') {
+            // Save preview scroll position before going back
+            const previewContent = document.getElementById('codePreviewContent');
+            if (previewContent) {
+                savedScrollPositions.preview = previewContent.scrollTop;
+            }
             // From preview back to folder/main list
             showSavedCodesList();
         } else {
@@ -1467,6 +1615,7 @@ function switchToTab(index) {
         editor.setValue(tab.content);
         
         updateLivePreviewVisibility(tab.language);
+        resetRunButton(); // Update button text for tab language
         
         // Update live preview if enabled
         if (isLivePreviewEnabled) {
@@ -1475,6 +1624,7 @@ function switchToTab(index) {
     }
     
     renderTabs();
+    saveEditorState(); // Save state after tab switch
 }
 
 function closeTab(index) {
@@ -1604,12 +1754,17 @@ window.renameTab = renameTab;
 let currentFolder = null;
 
 function openFolderFiles(folderKey, folderData) {
+    // Save current scroll position before switching to folder view
+    const list = document.getElementById('savedCodesList');
+    if (list && list.style.display !== 'none') {
+        savedScrollPositions.mainList = list.scrollTop;
+    }
+    
     currentFolder = { key: folderKey, ...folderData };
     
     document.getElementById('savedCodesTitle').textContent = `${folderData.name} Files`;
     document.getElementById('backToList').style.display = 'inline-block';
     
-    const list = document.getElementById('savedCodesList');
     list.innerHTML = '';
     
     folderData.files.forEach((file, index) => {
@@ -1629,6 +1784,10 @@ function openFolderFiles(folderKey, folderData) {
         
         list.appendChild(fileItem);
     });
+    
+    // Reset folder scroll position to top when first opening
+    savedScrollPositions.folderList = 0;
+    list.scrollTop = 0;
     
     document.getElementById('loadFolder').style.display = 'inline-block';
     document.getElementById('shareFolder').style.display = 'inline-block';
@@ -2202,7 +2361,8 @@ function applyLayout(layout) {
         // Set output panels for vertical layout
         document.querySelectorAll('.output-panel').forEach(panel => {
             panel.style.overflowX = 'auto';
-            panel.style.overflowY = 'hidden';
+            panel.style.overflowY = 'auto';
+            panel.style.maxHeight = '100%';
         });
     } else {
         // Horizontal layout
@@ -2237,6 +2397,7 @@ function applyLayout(layout) {
         document.querySelectorAll('.output-panel').forEach(panel => {
             panel.style.overflowX = 'hidden';
             panel.style.overflowY = 'auto';
+            panel.style.maxHeight = '100%';
         });
     }
     
@@ -2324,7 +2485,9 @@ function setupResizer() {
 function resetRunButton() {
     const runBtn = document.getElementById('runCode');
     if (runBtn) {
-        runBtn.innerHTML = '<i class="fas fa-play"></i> Run';
+        const language = document.getElementById('languageSelect').value;
+        const buttonText = (language === 'css' || language === 'html') ? 'Run' : 'Run (F5)';
+        runBtn.innerHTML = `<i class="fas fa-play"></i> ${buttonText}`;
         runBtn.disabled = false;
     }
 }
@@ -2382,6 +2545,13 @@ function executeCode() {
             analyzeComplexity: true
         });
         
+        // For JavaScript, run locally immediately for speed
+        if (language === 'javascript') {
+            resetRunButton();
+            runCodeLocally(code, language);
+            return;
+        }
+        
         // Fallback after 15 seconds if no server response (longer for server-hosted sites)
         setTimeout(() => {
             if (window.executionId === currentExecutionId) {
@@ -2391,8 +2561,9 @@ function executeCode() {
             }
         }, 15000);
         
-        // Show HTML preview immediately for better UX
+        // Show HTML preview immediately for better UX and reset button
         if (language === 'html') {
+            resetRunButton();
             showPreview(code);
         }
         return;
@@ -2486,6 +2657,13 @@ function saveCodeWithName(fileName) {
 let savedCodesListener = null;
 let savedFoldersListener = null;
 
+// Scroll position preservation
+let savedScrollPositions = {
+    mainList: 0,
+    folderList: 0,
+    preview: 0
+};
+
 function showSavedCodes() {
     if (!window.currentUser) {
         showNotification('Please login to view saved codes!');
@@ -2575,6 +2753,13 @@ function showSavedCodes() {
         if (!hasContent) {
             list.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">No saved codes or folders found</div>';
         }
+        
+        // Restore scroll position after content update
+        setTimeout(() => {
+            if (list && !currentFolder) {
+                list.scrollTop = savedScrollPositions.mainList;
+            }
+        }, 50);
     }
     
     // Set up real-time listeners with proper error handling
@@ -2670,12 +2855,30 @@ function hideCodePreview() {
 }
 
 function showCodePreview(codeData, key, isFromFolder = false) {
+    // Save current scroll position before switching views
+    const list = document.getElementById('savedCodesList');
+    if (list && list.style.display !== 'none') {
+        if (currentFolder) {
+            savedScrollPositions.folderList = list.scrollTop;
+        } else {
+            savedScrollPositions.mainList = list.scrollTop;
+        }
+    }
+    
     document.getElementById('savedCodesTitle').textContent = codeData.name;
     document.getElementById('backToList').style.display = 'inline-block';
     
     document.getElementById('savedCodesList').style.display = 'none';
     document.getElementById('codePreviewContent').style.display = 'block';
     document.getElementById('codePreviewContent').textContent = codeData.content;
+    
+    // Restore preview scroll position
+    setTimeout(() => {
+        const previewContent = document.getElementById('codePreviewContent');
+        if (previewContent) {
+            previewContent.scrollTop = savedScrollPositions.preview;
+        }
+    }, 100);
     
     document.getElementById('loadCode').style.display = 'inline-block';
     document.getElementById('loadCode').onclick = () => {
@@ -2722,6 +2925,15 @@ function showSavedCodesList() {
     document.getElementById('loadCode').style.display = 'none';
     document.getElementById('shareCode').style.display = 'none';
     document.getElementById('deleteCode').style.display = 'none';
+    
+    // Restore scroll position
+    setTimeout(() => {
+        const list = document.getElementById('savedCodesList');
+        if (list) {
+            const scrollPos = currentFolder ? savedScrollPositions.folderList : savedScrollPositions.mainList;
+            list.scrollTop = scrollPos;
+        }
+    }, 100);
 }
 
 function resetSavedCodesModal() {
@@ -2736,6 +2948,13 @@ function resetSavedCodesModal() {
     document.getElementById('loadFolder').style.display = 'none';
     document.getElementById('shareFolder').style.display = 'none';
     document.getElementById('deleteFolder').style.display = 'none';
+    
+    // Reset scroll positions when modal is closed
+    savedScrollPositions = {
+        mainList: 0,
+        folderList: 0,
+        preview: 0
+    };
 }
 
 function cleanupSavedCodesListeners() {
@@ -3450,31 +3669,21 @@ function runCodeLocally(code, language) {
                 };
                 
                 try {
-                    console.log('About to execute JavaScript code with custom console');
-                    console.log('Custom console object:', customConsole);
-                    
-                    // Execute code with custom console in scope
+                    // Execute code with custom console in scope - immediate execution
                     const func = new Function('console', code);
                     func(customConsole);
-                    
-                    console.log('JavaScript execution completed');
-                    console.log('Console panel children count:', consolePanel ? consolePanel.children.length : 'panel not found');
                     
                     // If no output was generated, show success message
                     if (consolePanel && consolePanel.children.length === 0) {
                         displayConsoleOutput('Code executed successfully', 'success');
                     }
                 } catch (error) {
-                    console.log('JavaScript execution error:', error);
                     displayConsoleOutput(error.message, 'error');
                 }
                 break;
                 
             case 'html':
                 showPreview(code);
-                if (!isLivePreviewEnabled || !hasConnectedFiles()) {
-                    displayOutput('HTML preview updated');
-                }
                 break;
                 
             case 'css':
@@ -3491,7 +3700,11 @@ function runCodeLocally(code, language) {
                 displayOutputInTerminal('Python requires server connection with Python interpreter installed.', '', getLocalComplexity(code, language));
                 break;
             case 'java':
-                displayOutputInTerminal('Connecting to server for Java execution...', '', getLocalComplexity(code, language));
+                if (window.socket && window.socket.connected) {
+                    displayOutputInTerminal('', 'Java execution failed on server.', getLocalComplexity(code, language));
+                } else {
+                    displayOutputInTerminal('', 'Java requires server connection with Java compiler installed.', getLocalComplexity(code, language));
+                }
                 break;
             case 'c':
                 displayOutputInTerminal('', 'C: Download MinGW from https://sourceforge.net/projects/mingw-w64/files/ and add to PATH', getLocalComplexity(code, language));
@@ -6180,34 +6393,6 @@ function loadFriendRequests() {
 }
 // Set user online status when they login
 function setUserOnline() {
-    if (!window.currentUser) return;
-    
-    database.ref(`users/${window.currentUser.uid}/status`).set({
-        online: true,
-        lastSeen: firebase.database.ServerValue.TIMESTAMP
-    });
-    
-    // Set offline when user disconnects
-    database.ref(`users/${window.currentUser.uid}/status`).onDisconnect().set({
-        online: false,
-        lastSeen: firebase.database.ServerValue.TIMESTAMP
-    });
-}
-
-// Get user online status
-function getUserStatus(userId, callback) {
-    database.ref(`users/${userId}/status`).on('value', (snapshot) => {
-        const status = snapshot.val();
-        if (status) {
-            callback(status.online ? 'online' : 'offline');
-        } else {
-            callback('offline');
-        }
-    });
-}
-
-// Set user online status when they login
-function setUserOnline() {
     if (!window.currentUser || typeof database === 'undefined') return;
     
     console.log('Setting user online:', window.currentUser.uid);
@@ -6248,3 +6433,77 @@ function getUserStatus(userId, callback) {
         callback('offline');
     });
 }
+
+// Accept friend request
+function acceptFriendRequest(fromUid, fromName, fromEmail, fromPhoto) {
+    if (!window.currentUser) return;
+    
+    const currentUid = window.currentUser.uid;
+    const updates = {};
+    
+    // Add to friends list
+    updates[`friends/${currentUid}/${fromUid}`] = {
+        name: fromName,
+        email: fromEmail,
+        photo: fromPhoto || '',
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    updates[`friends/${fromUid}/${currentUid}`] = {
+        name: window.currentUser.displayName,
+        email: window.currentUser.email,
+        photo: window.currentUser.photoURL || '',
+        addedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    // Remove friend request
+    updates[`friendRequests/${currentUid}/${fromUid}`] = null;
+    
+    database.ref().update(updates).then(() => {
+        showCustomPopup('Success', `You are now friends with ${fromName}!`);
+    }).catch(error => {
+        console.error('Error accepting friend request:', error);
+        showCustomPopup('Error', 'Failed to accept friend request');
+    });
+}
+
+// Reject friend request
+function rejectFriendRequest(fromUid) {
+    if (!window.currentUser) return;
+    
+    database.ref(`friendRequests/${window.currentUser.uid}/${fromUid}`).remove()
+        .then(() => {
+            console.log('Friend request rejected');
+        })
+        .catch(error => {
+            console.error('Error rejecting friend request:', error);
+        });
+}
+
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Firebase if not already done
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        // Firebase config should be loaded from a separate config file
+        console.log('Firebase initialized');
+    }
+    
+    // Load friend requests if user is logged in
+    if (window.currentUser) {
+        loadFriendRequests();
+        setUserOnline();
+    }
+    
+    // Set up auth state listener
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                window.currentUser = user;
+                loadFriendRequests();
+                setUserOnline();
+            } else {
+                window.currentUser = null;
+            }
+        });
+    }
+});
