@@ -2664,16 +2664,35 @@ body {
     position: fixed;
     bottom: 20px;
     right: 20px;
+    z-index: 9999;
+
+    /* ORIGINAL LOOK */
     background: #007acc;
     color: white;
     border: none;
+    font-size: 20px;
     padding: 14px;
     border-radius: 50%;
-    font-size: 20px;
     cursor: pointer;
-    z-index: 9999;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.35);
+
+    /* NEW GLOW ANIMATION */
+    animation: pulseAI 1.5s infinite;
 }
+
+/* ICON COLOR (white brain) */
+.mobile-open-btn i {
+    font-size: 22px;
+    color: #ffffff;
+}
+
+/* PULSE ANIMATION */
+@keyframes pulseAI {
+    0% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 4px 8px rgba(0,0,0,0.35); }
+    50% { box-shadow: 0 0 18px #00eaff, 0 0 26px #00eaff, 0 4px 8px rgba(0,0,0,0.35); }
+    100% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 4px 8px rgba(0,0,0,0.35); }
+}
+
 
 /* Right Drawer */
 .mobile-drawer-panel {
