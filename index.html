@@ -483,6 +483,7 @@
     <!-- App Scripts -->
     <script src="app.js"></script>
     <script src="shared_functions.js"></script>
+    <script src="toggler.js"></script>
     
     <!-- Firebase Configuration -->
     <script>
@@ -1386,6 +1387,34 @@
         </div>
     </div>
     
+<!--   ai mod section -->
+   <!-- Drawer Open Button -->
+<button id="drawerOpenBtn" class="mobile-open-btn"><i class="fas fa-bars"></i></button>
 
+<!-- Right Drawer Panel -->
+<div id="drawerPanel" class="mobile-drawer-panel">
+
+    <div class="drawer-header">
+        <div class="model-select-box">
+    <select id="modelSelector">
+        <option value="blackbox">Blackbox AI</option>
+        <option value="google">Google Search</option>
+    </select>
+</div>
+
+        <button id="drawerCloseBtn" class="close-btn"><i class="fas fa-times"></i></button>
+    </div>
+
+    <!-- Drag Resize Handle -->
+    <div id="drawerResize" class="drawer-resize"></div>
+    <div id="drawerOverlay" class="drawer-overlay"></div>
+
+
+    <div class="drawer-content">
+    <iframe id="drawerIframe" frameborder="0"></iframe>
+</div>
+
+
+</div>
     </body>
     </html>
