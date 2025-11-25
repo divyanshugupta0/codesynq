@@ -2653,3 +2653,132 @@ body {
     display: flex !important;
     gap: 0.5rem !important;
 }
+
+
+
+
+
+/*-----------------ai section----------------------*/
+/* Toggle Button */
+.mobile-open-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #007acc;
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+/* Right Drawer */
+.mobile-drawer-panel {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 45%;
+    height: 100%;
+    background: #111;
+    color: white;
+    transition: right .35s ease-in-out;
+    z-index: 9998;
+    display: flex;
+    flex-direction: column;
+    border-left: 3px solid #007acc;
+    overflow: hidden;
+}
+
+/* Show Drawer */
+.mobile-drawer-panel.active {
+    right: 0;
+}
+
+/* Header */
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #222;
+    padding: 10px;
+    color: white;
+    z-index: 10;
+}
+
+/* Close Button */
+.close-btn {
+    background: crimson;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+}
+
+/* Drawer Content */
+.drawer-content {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Iframe inside drawer */
+.drawer-content iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* Resize handle */
+.drawer-resize {
+    width: 6px;
+    cursor: ew-resize;
+    background: rgba(255,255,255,0.2);
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    z-index: 20;
+}
+
+.drawer-resize:hover {
+    background: rgba(255,255,255,0.35);
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+    .mobile-drawer-panel {
+        width: 80%;
+    }
+}
+
+/* Dark transparent overlay during drag */
+.drawer-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    z-index: 9990; /* below drawer but above page */
+    cursor: ew-resize;
+}
+.model-select-box {
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.1);
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.model-select-box select {
+    width: 100%;
+    padding: 5px;
+    border-radius: 6px;
+    border: none;
+    background: var(--bg-secondary, #222);
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+}
