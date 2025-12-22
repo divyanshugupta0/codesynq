@@ -112,7 +112,9 @@ const FullScreenManager = {
 
         if (requestFs) {
             requestFs.call(docEl).then(() => {
-                this.hideOverlay();
+                // Success! But don't hide immediately here. 
+                // Wait for the 'fullscreenchange' event to trigger hideOverlay().
+                // This ensures we are ACTUALLY in fullscreen before hiding.
             }).catch(err => {
                 console.warn('Fullscreen denied or failed (likely blocked by browser):', err);
                 // Auto switch failed, so show overlay to prompt user
