@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropdown Test - NexusCode</title>
+    <link rel="stylesheet" href="nexusstyle.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: var(--text-secondary);
+        }
+
+        .status-bar {
+            position: relative;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-area">
+        <p>Click the notification bell in the status bar below 👇</p>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-left">
+            <div class="status-item">
+                <span>NexusCode IDE</span>
+            </div>
+        </div>
+        <div class="status-right">
+            <div class="status-item notification" id="statusBarNotification">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                </svg>
+                <span id="statusNotificationBadge" class="notification-badge">3</span>
+
+                <!-- Notification Dropdown (Opens Upward) -->
+                <div id="statusNotificationDropdown" class="notification-dropdown">
+                    <!-- Community Section -->
+                    <div class="notifications-section">
+                        <div class="notifications-header-inline">
+                            <h4><i class="fas fa-users"></i> Community</h4>
+                        </div>
+                        <div id="statusFriendRequestsSection">
+                            <div id="statusFriendRequestsList" class="friend-requests-list">
+                                <p class="no-requests">2 friend requests</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dropdown-divider"></div>
+
+                    <!-- Inbox Section -->
+                    <div class="notifications-section">
+                        <div class="notifications-header-inline">
+                            <h4><i class="fas fa-inbox"></i> Inbox</h4>
+                        </div>
+                        <button class="btn-secondary" style="width: 100%; margin-top: 5px; justify-content: center;">
+                            <i class="fas fa-envelope-open-text"></i> View Received Codes (1)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <div id="dropdownBlurOverlay" class="dropdown-blur-overlay"></div>
+
+    <script>
+        // Simple dropdown toggle
+        const statusBarNotif = document.getElementById('statusBarNotification');
+        const statusNotifDropdown = document.getElementById('statusNotificationDropdown');
+        const dropdownOverlay = document.getElementById('dropdownBlurOverlay');
+
+        statusBarNotif.addEventListener('click', (e) => {
+            e.stopPropagation();
+            statusNotifDropdown.classList.toggle('active');
+            dropdownOverlay.classList.toggle('active');
+        });
+
+        dropdownOverlay.addEventListener('click', () => {
+            statusNotifDropdown.classList.remove('active');
+            dropdownOverlay.classList.remove('active');
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                statusNotifDropdown.classList.remove('active');
+                dropdownOverlay.classList.remove('active');
+            }
+        });
+    </script>
+</body>
+
+</html>

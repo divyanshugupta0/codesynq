@@ -1,0 +1,201 @@
+/* ===== Menu Bar Dropdowns ===== */
+.menu-bar {
+    display: flex;
+    gap: 4px;
+    margin-left: 12px;
+}
+
+.menu-dropdown {
+    position: relative;
+}
+
+.menu-item {
+    padding: 4px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+    border-radius: 4px;
+}
+
+.menu-item:hover {
+    background: var(--bg-hover);
+}
+
+.menu-item.active {
+    background: var(--bg-hover);
+}
+
+.menu-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 280px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 10000;
+    display: none;
+    animation: menuFadeIn 0.15s ease;
+}
+
+@keyframes menuFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.menu-panel.active {
+    display: block;
+}
+
+.menu-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+    transition: background 0.1s;
+    border-radius: 4px;
+}
+
+.menu-option:hover {
+    background: var(--bg-hover);
+}
+
+.menu-option i {
+    width: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.menu-shortcut {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.menu-separator {
+    height: 1px;
+    background: var(--border-secondary);
+    margin: 4px 0;
+}
+
+/* ===== Sub-menu Styles ===== */
+.menu-option-submenu {
+    position: relative;
+}
+
+.menu-option.has-submenu {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.submenu-arrow {
+    font-size: 10px;
+    margin-left: auto;
+    opacity: 0.6;
+}
+
+.submenu-panel {
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 200px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 10001;
+    display: none;
+    margin-left: 4px;
+}
+
+.menu-option-submenu:hover .submenu-panel {
+    display: block;
+}
+
+/* Layout Icon Preview in Menu */
+.layout-icon {
+    width: 20px;
+    height: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-right: 6px;
+}
+
+.layout-icon .layout-top,
+.layout-icon .layout-bottom {
+    background: var(--text-muted);
+    border-radius: 2px;
+    height: 50%;
+}
+
+.layout-option:hover .layout-icon .layout-top,
+.layout-option:hover .layout-icon .layout-bottom {
+    background: var(--accent-primary);
+}
+
+/* ===== VS Code Layout Buttons ===== */
+.layout-buttons-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 12px;
+    padding: 2px 4px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.layout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+}
+
+.layout-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.layout-btn.active {
+    background: var(--bg-hover);
+    color: var(--accent-primary);
+}
+
+.layout-btn svg {
+    opacity: 0.8;
+}
+
+.layout-btn:hover svg,
+.layout-btn.active svg {
+    opacity: 1;
+}

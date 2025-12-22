@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu Dropdown Test</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-hover: #30363d;
+            --text-primary: #e6edf3;
+            --text-muted: #6e7681;
+            --border-primary: #30363d;
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .menu-bar {
+            display: flex;
+            gap: 4px;
+            background: #1a1a2e;
+            padding: 8px;
+            border-radius: 8px;
+        }
+
+        .menu-dropdown {
+            position: relative;
+        }
+
+        .menu-item {
+            padding: 6px 14px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+
+        .menu-item:hover,
+        .menu-item.active {
+            background: var(--bg-hover);
+        }
+
+        .menu-panel {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 250px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            padding: 6px;
+            z-index: 10000;
+            display: none;
+            margin-top: 4px;
+        }
+
+        .menu-panel.active {
+            display: block;
+        }
+
+        .menu-option {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 13px;
+            text-align: left;
+            border-radius: 4px;
+        }
+
+        .menu-option:hover {
+            background: var(--bg-hover);
+        }
+
+        .menu-shortcut {
+            margin-left: auto;
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+
+        .menu-separator {
+            height: 1px;
+            background: var(--border-primary);
+            margin: 4px 0;
+        }
+
+        #log {
+            margin-top: 40px;
+            padding: 20px;
+            background: #1a1a2e;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Menu Dropdown Test</h2>
+    <p>Click on File, Edit, or View to test dropdown menus:</p>
+
+    <nav class="menu-bar">
+        <div class="menu-dropdown">
+            <button class="menu-item">File</button>
+            <div class="menu-panel">
+                <button class="menu-option">New File <span class="menu-shortcut">Ctrl+N</span></button>
+                <button class="menu-option">Open Folder <span class="menu-shortcut">Ctrl+O</span></button>
+                <div class="menu-separator"></div>
+                <button class="menu-option">Save <span class="menu-shortcut">Ctrl+S</span></button>
+                <button class="menu-option">Save As... <span class="menu-shortcut">Ctrl+Shift+S</span></button>
+            </div>
+        </div>
+
+        <div class="menu-dropdown">
+            <button class="menu-item">Edit</button>
+            <div class="menu-panel">
+                <button class="menu-option">Undo <span class="menu-shortcut">Ctrl+Z</span></button>
+                <button class="menu-option">Redo <span class="menu-shortcut">Ctrl+Y</span></button>
+                <div class="menu-separator"></div>
+                <button class="menu-option">Cut <span class="menu-shortcut">Ctrl+X</span></button>
+                <button class="menu-option">Copy <span class="menu-shortcut">Ctrl+C</span></button>
+                <button class="menu-option">Paste <span class="menu-shortcut">Ctrl+V</span></button>
+            </div>
+        </div>
+
+        <div class="menu-dropdown">
+            <button class="menu-item">View</button>
+            <div class="menu-panel">
+                <button class="menu-option">Toggle Sidebar</button>
+                <button class="menu-option">Toggle Terminal</button>
+                <div class="menu-separator"></div>
+                <button class="menu-option">Fullscreen <span class="menu-shortcut">F11</span></button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="log">Console log appears here...</div>
+
+    <script>
+        const log = document.getElementById('log');
+        function addLog(msg) {
+            log.textContent += '\n' + new Date().toLocaleTimeString() + ': ' + msg;
+        }
+
+        let currentOpenMenu = null;
+
+        // Menu item click handlers
+        document.querySelectorAll('.menu-item').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                addLog('Clicked: ' + this.textContent);
+
+                const parent = this.parentElement;
+                const panel = parent.querySelector('.menu-panel');
+
+                if (currentOpenMenu === panel) {
+                    // Close current menu
+                    panel.classList.remove('active');
+                    this.classList.remove('active');
+                    currentOpenMenu = null;
+                    addLog('Closed menu');
+                } else {
+                    // Close any open menu
+                    if (currentOpenMenu) {
+                        currentOpenMenu.classList.remove('active');
+                        currentOpenMenu.parentElement.querySelector('.menu-item').classList.remove('active');
+                    }
+
+                    // Open this menu
+                    panel.classList.add('active');
+                    this.classList.add('active');
+                    currentOpenMenu = panel;
+                    addLog('Opened menu');
+                }
+            });
+        });
+
+        // Menu option click handlers
+        document.querySelectorAll('.menu-option').forEach(option => {
+            option.addEventListener('click', function (e) {
+                e.stopPropagation();
+                addLog('Selected: ' + this.textContent.trim());
+
+                // Close menu after action
+                setTimeout(() => {
+                    if (currentOpenMenu) {
+                        currentOpenMenu.classList.remove('active');
+                        currentOpenMenu.parentElement.querySelector('.menu-item').classList.remove('active');
+                        currentOpenMenu = null;
+                        addLog('Menu closed after action');
+                    }
+                }, 100);
+            });
+        });
+
+        // Click outside to close
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.menu-dropdown') && currentOpenMenu) {
+                currentOpenMenu.classList.remove('active');
+                currentOpenMenu.parentElement.querySelector('.menu-item').classList.remove('active');
+                currentOpenMenu = null;
+                addLog('Closed menu (clicked outside)');
+            }
+        });
+
+        addLog('Menu system initialized. Click File/Edit/View to test!');
+    </script>
+</body>
+
+</html>
