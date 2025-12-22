@@ -256,7 +256,8 @@ body {
 }
 
 /* Container */
-.container {
+.container,
+.ide-container {
     display: grid;
     grid-template-columns: 1fr;
     height: calc(100vh - 80px);
@@ -265,7 +266,8 @@ body {
     overflow: hidden;
 }
 
-.container.collaboration-mode {
+.container.collaboration-mode,
+.ide-container.collaboration-mode {
     grid-template-columns: 1fr 350px;
 }
 

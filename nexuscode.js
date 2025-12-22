@@ -5126,7 +5126,8 @@ function setupVideoControls() {
 function setupCollaborationToggle() {
     const toggleBtn = document.getElementById('collaborationToggle');
     const rightPanel = document.getElementById('rightPanel');
-    const container = document.querySelector('.container');
+    // Using ide-container as per HTML structure
+    const container = document.querySelector('.ide-container') || document.querySelector('.container');
 
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
