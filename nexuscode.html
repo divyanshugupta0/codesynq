@@ -270,6 +270,36 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="settings-section">
+                                <h4>Execution</h4>
+                                <div class="setting-item" style="margin-bottom: 8px;">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <i class="fas fa-microchip" style="color: #4ec9b0;"></i>
+                                        Mode:
+                                    </label>
+                                    <select id="executionModeSelect" style="flex: 1; margin-left: 8px;">
+                                        <option value="auto">Auto (Local if available)</option>
+                                        <option value="local">Local Only</option>
+                                        <option value="remote">Remote Only</option>
+                                    </select>
+                                </div>
+                                <div id="localServiceStatus" class="setting-item"
+                                    style="display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px;">
+                                    <span id="localServiceIndicator"
+                                        style="width: 8px; height: 8px; border-radius: 50%; background: #f14c4c;"></span>
+                                    <span id="localServiceText">Local Service: Checking...</span>
+                                </div>
+                                <div id="setupLocalServiceBtn" class="setting-item"
+                                    style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 8px 0; transition: background 0.2s;"
+                                    onclick="if(window.executionManager) window.executionManager.showLocalServiceSetup();">
+                                    <i class="fas fa-download" style="color: #569cd6;"></i>
+                                    <div style="display: flex; flex-direction: column;">
+                                        <span style="font-weight: 500;">Setup Local Service</span>
+                                        <span style="font-size: 11px; color: var(--text-secondary);">Run code on your
+                                            device</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -706,6 +736,10 @@
     <script src="toggler.js"></script>
     <script src="conalert.js"></script>
     <script src="nexusshare.js"></script>
+
+    <!-- Local Execution Module -->
+    <script src="local_execution/local-executor-client.js"></script>
+    <script src="local_execution/execution-manager.js"></script>
 
     <!-- Firebase Configuration -->
     <script>

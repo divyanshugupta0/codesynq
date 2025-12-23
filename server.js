@@ -41,6 +41,51 @@ app.get('/socket-status', (req, res) => {
     });
 });
 
+// Local Execution Service download endpoint
+app.get('/local_execution/CodeSynq-LocalExecution.zip', (req, res) => {
+    const archiver = require('archiver');
+    const localExecDir = path.join(__dirname, 'local_execution');
+
+    // Check if directory exists
+    if (!fs.existsSync(localExecDir)) {
+        res.status(404).json({ error: 'Local execution files not found' });
+        return;
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename=CodeSynq-LocalExecution.zip');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.on('error', (err) => {
+        res.status(500).json({ error: err.message });
+    });
+
+    archive.pipe(res);
+
+    // Only include files that users need for local execution
+    // Exclude browser-only files (execution-manager.js, local-executor-client.js)
+    const filesToInclude = [
+        'INSTALL.bat',
+        'Uninstall.bat',
+        'local-server.js',
+        'start-service.bat',
+        'stop-service.bat',
+        'package.json',
+        'README.md',
+        'codesynq.ico'  // Icon for desktop shortcut
+    ];
+
+    filesToInclude.forEach(file => {
+        const filePath = path.join(localExecDir, file);
+        if (fs.existsSync(filePath)) {
+            archive.file(filePath, { name: file });
+        }
+    });
+
+    archive.finalize();
+});
+
 const rooms = new Map();
 const users = new Map();
 const runningProcesses = new Map();
