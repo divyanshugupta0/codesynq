@@ -63,17 +63,16 @@ app.get('/local_execution/CodeSynq-LocalExecution.zip', (req, res) => {
 
     archive.pipe(res);
 
-    // Only include files that users need for local execution
-    // Exclude browser-only files (execution-manager.js, local-executor-client.js)
+    // Include all required files for local execution setup
     const filesToInclude = [
-        'INSTALL.bat',
-        'Uninstall.bat',
-        'local-server.js',
-        'start-service.bat',
-        'stop-service.bat',
-        'package.json',
-        'README.md',
-        'codesynq.ico'  // Icon for desktop shortcut
+        'Setup.hta',              // Visual installer
+        'ExecutionPanel.hta',     // Execution history viewer
+        'local-server.js',        // Main service
+        'start-service.bat',      // Start script
+        'stop-service.bat',       // Stop script
+        'package.json',           // NPM config
+        'README.md',              // Documentation
+        'codesynq.ico'            // App icon
     ];
 
     filesToInclude.forEach(file => {

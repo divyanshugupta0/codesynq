@@ -1,0 +1,539 @@
+<html>
+<head>
+    <title>CodeSynq Execution Panel</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <HTA:APPLICATION ID="CodeSynqPanel" APPLICATIONNAME="Execution Panel" BORDER="thin" BORDERSTYLE="normal" CAPTION="yes" ICON="codesynq.ico" MAXIMIZEBUTTON="yes" MINIMIZEBUTTON="yes" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" SYSMENU="yes" VERSION="1.0" WINDOWSTATE="normal"/>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0d1117; color: #e6edf3; overflow: hidden; scrollbar-face-color: #3a4a6a; scrollbar-track-color: #161b22; scrollbar-arrow-color: #58a6ff; }
+        
+        .app { width: 100%; height: 100%; }
+        
+        /* Header */
+        .header { background: linear-gradient(180deg, #161b22 0%, #0d1117 100%); border-bottom: 1px solid #30363d; padding: 12px 20px; }
+        .header-row { display: table; width: 100%; }
+        .header-left { display: table-cell; vertical-align: middle; }
+        .header-right { display: table-cell; vertical-align: middle; text-align: right; }
+        .brand { display: inline-block; vertical-align: middle; }
+        .logo { display: inline-block; width: 40px; height: 40px; background: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%); border-radius: 10px; text-align: center; line-height: 40px; font-family: Consolas; font-size: 15px; font-weight: bold; color: #fff; vertical-align: middle; margin-right: 12px; }
+        .brand-text { display: inline-block; vertical-align: middle; }
+        .brand-text h1 { font-size: 16px; font-weight: 600; color: #e6edf3; margin: 0; }
+        .brand-text p { font-size: 10px; color: #7d8590; margin: 2px 0 0 0; }
+        .status { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .status-on { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.4); }
+        .status-off { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.4); }
+        
+        /* Stats Bar */
+        .stats-bar { background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 20px; }
+        .stats-row { display: table; width: 100%; }
+        .stats-left { display: table-cell; vertical-align: middle; width: 60%; }
+        .stats-right { display: table-cell; vertical-align: middle; text-align: right; }
+        .stat-card { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 10px 18px; margin-right: 8px; text-align: center; min-width: 80px; }
+        .stat-value { font-size: 22px; font-weight: 700; }
+        .stat-value.total { color: #58a6ff; }
+        .stat-value.success { color: #3fb950; }
+        .stat-value.failed { color: #f85149; }
+        .stat-label { font-size: 9px; color: #7d8590; text-transform: uppercase; margin-top: 2px; letter-spacing: 0.5px; }
+        
+        /* Controls */
+        .controls { display: inline-block; }
+        .filter-select { padding: 8px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 12px; font-family: 'Segoe UI'; margin-right: 6px; }
+        .filter-select option { background: #161b22; }
+        .btn { display: inline-block; padding: 8px 14px; border: none; border-radius: 6px; font-family: 'Segoe UI'; font-size: 12px; font-weight: 500; cursor: pointer; vertical-align: middle; }
+        .btn-primary { background: #238636; color: #fff; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-danger { background: rgba(248,81,73,0.1); color: #f85149; border: 1px solid rgba(248,81,73,0.4); }
+        .btn-danger:hover { background: rgba(248,81,73,0.2); }
+        
+        /* Main Area */
+        .main-area { display: table; width: 100%; height: calc(100% - 140px); }
+        .list-panel { display: table-cell; width: 100%; vertical-align: top; padding: 15px 20px; overflow-y: auto; height: 100%; }
+        
+        /* History Cards */
+        .history-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin-bottom: 10px; overflow: hidden; cursor: pointer; }
+        .history-card:hover { border-color: #58a6ff; }
+        .history-card.success { border-left: 4px solid #3fb950; }
+        .history-card.failed { border-left: 4px solid #f85149; }
+        
+        .card-header { padding: 12px 15px; background: #21262d; border-bottom: 1px solid #30363d; }
+        .card-header-row { display: table; width: 100%; }
+        .card-header-left { display: table-cell; vertical-align: middle; }
+        .card-header-right { display: table-cell; vertical-align: middle; text-align: right; }
+        
+        .lang-tag { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-right: 8px; }
+        .lang-python { background: rgba(55,118,171,0.2); color: #58a6ff; }
+        .lang-javascript { background: rgba(247,223,30,0.15); color: #f0c808; }
+        .lang-java { background: rgba(248,152,32,0.2); color: #f89820; }
+        .lang-c, .lang-cpp { background: rgba(88,166,255,0.15); color: #58a6ff; }
+        
+        .status-tag { display: inline-block; font-size: 11px; font-weight: 500; }
+        .status-tag.ok { color: #3fb950; }
+        .status-tag.err { color: #f85149; }
+        
+        .time-tag { font-size: 11px; color: #7d8590; }
+        
+        .card-body { padding: 12px 15px; }
+        .card-meta { margin-bottom: 10px; }
+        .meta-item { display: inline-block; margin-right: 15px; font-size: 11px; color: #7d8590; }
+        .meta-icon { color: #58a6ff; margin-right: 4px; }
+        
+        .card-code { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; font-family: Consolas, monospace; font-size: 11px; color: #8b949e; white-space: pre-wrap; word-break: break-all; max-height: 80px; overflow: hidden; }
+        
+        .card-output { margin-top: 10px; background: rgba(63,185,80,0.05); border: 1px solid rgba(63,185,80,0.2); border-radius: 6px; padding: 8px 12px; font-family: Consolas; font-size: 11px; color: #3fb950; max-height: 50px; overflow: hidden; }
+        .card-error { margin-top: 10px; background: rgba(248,81,73,0.05); border: 1px solid rgba(248,81,73,0.2); border-radius: 6px; padding: 8px 12px; font-family: Consolas; font-size: 11px; color: #f85149; max-height: 50px; overflow: hidden; }
+        
+        /* Detail Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; }
+        .modal-overlay.open { display: block; }
+        .modal { position: absolute; top: 50%; left: 50%; width: 600px; max-height: 80%; transform: translate(-50%, -50%); background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
+        .modal-header { padding: 15px 20px; background: #21262d; border-bottom: 1px solid #30363d; }
+        .modal-header-row { display: table; width: 100%; }
+        .modal-title { display: table-cell; font-size: 16px; font-weight: 600; color: #e6edf3; vertical-align: middle; }
+        .modal-close { display: table-cell; text-align: right; vertical-align: middle; }
+        .close-btn { background: #30363d; border: none; color: #8b949e; font-size: 18px; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; }
+        .close-btn:hover { background: #484f58; color: #e6edf3; }
+        .modal-body { padding: 20px; max-height: 500px; overflow-y: auto; scrollbar-face-color: #3a4a6a; scrollbar-track-color: #161b22; }
+        
+        .detail-grid { display: table; width: 100%; margin-bottom: 20px; }
+        .detail-row { display: table-row; }
+        .detail-cell { display: table-cell; width: 33.33%; padding: 8px; }
+        .detail-box { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 12px; text-align: center; }
+        .detail-label { font-size: 10px; color: #7d8590; text-transform: uppercase; margin-bottom: 5px; }
+        .detail-value { font-size: 16px; font-weight: 600; color: #e6edf3; }
+        
+        .section { margin-bottom: 15px; }
+        .section-title { font-size: 11px; font-weight: 600; color: #7d8590; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .section-box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px; font-family: Consolas; font-size: 12px; color: #8b949e; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto; }
+        .section-box.output { color: #3fb950; }
+        .section-box.error { color: #f85149; }
+        
+        /* Empty State */
+        .empty { text-align: center; padding: 60px 20px; }
+        .empty-icon { font-size: 50px; opacity: 0.3; margin-bottom: 15px; }
+        .empty-title { font-size: 18px; font-weight: 600; color: #8b949e; margin-bottom: 8px; }
+        .empty-text { font-size: 13px; color: #7d8590; }
+        
+        /* Loading */
+        .loading { text-align: center; padding: 50px; }
+        .spinner { display: inline-block; width: 35px; height: 35px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Footer */
+        .footer { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 1px solid #30363d; padding: 8px 20px; font-size: 10px; color: #7d8590; }
+        .footer-row { display: table; width: 100%; }
+        .footer-left { display: table-cell; }
+        .footer-right { display: table-cell; text-align: right; }
+        
+        /* Scrollable area fix */
+        .scroll-area { height: calc(100vh - 180px); overflow-y: auto; padding: 15px 20px; scrollbar-face-color: #3a4a6a; scrollbar-track-color: #0d1117; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-row">
+                <div class="header-left">
+                    <div class="brand">
+                        <div class="logo">&lt;/&gt;</div>
+                        <div class="brand-text">
+                            <h1>Execution Panel</h1>
+                            <p>CodeSynq Local Execute Engine</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <span class="status status-off" id="status">&#9679; Checking...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stats-row">
+                <div class="stats-left">
+                    <div class="stat-card">
+                        <div class="stat-value total" id="stat-total">0</div>
+                        <div class="stat-label">Total Runs</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value success" id="stat-success">0</div>
+                        <div class="stat-label">Successful</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value failed" id="stat-failed">0</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value total" id="stat-avg">0<span style="font-size:12px;">ms</span></div>
+                        <div class="stat-label">Avg Time</div>
+                    </div>
+                </div>
+                <div class="stats-right">
+                    <div class="controls">
+                        <select class="filter-select" id="filter-lang" onchange="applyFilters()">
+                            <option value="all">All Languages</option>
+                            <option value="python">Python</option>
+                            <option value="javascript">JavaScript</option>
+                            <option value="java">Java</option>
+                            <option value="c">C</option>
+                            <option value="cpp">C++</option>
+                        </select>
+                        <select class="filter-select" id="filter-status" onchange="applyFilters()">
+                            <option value="all">All Status</option>
+                            <option value="success">Success</option>
+                            <option value="error">Failed</option>
+                        </select>
+                        <button class="btn btn-primary" id="btn-auto" onclick="toggleAutoRefresh()">&#9210; Auto: ON</button>
+                        <button class="btn btn-secondary" onclick="doRefresh()">&#8635; Refresh</button>
+                        <button class="btn btn-danger" onclick="doClearAll()">&#128465; Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="scroll-area" id="scroll-area">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top:15px;color:#7d8590;">Loading execution history...</p>
+            </div>
+            <div id="history-list" style="display:none;"></div>
+            <div id="empty" class="empty" style="display:none;">
+                <div class="empty-icon">&#128196;</div>
+                <div class="empty-title">No Executions Yet</div>
+                <div class="empty-text">Run some code in CodeSynq to see the history here.</div>
+            </div>
+        </div>
+        
+        <!-- Detail Modal -->
+        <div class="modal-overlay" id="modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-header-row">
+                        <div class="modal-title">Execution Details</div>
+                        <div class="modal-close">
+                            <button class="close-btn" onclick="closeModal()">&#10005;</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-body" id="modal-body"></div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-row">
+                <div class="footer-left" id="footer-left">&#128274; Connected to localhost:3001</div>
+                <div class="footer-right" id="footer-time"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script language="JScript">
+        var historyData = [];
+        var filteredData = [];
+        var lastCount = 0;
+        var autoRefreshEnabled = true;
+        var autoRefreshTimer = null;
+        
+        window.resizeTo(950, 700);
+        window.moveTo((screen.availWidth - 950) / 2, (screen.availHeight - 700) / 2);
+        
+        // Initialize after a short delay
+        window.setTimeout(function() {
+            checkStatus();
+            loadHistory();
+            updateTime();
+            window.setInterval(updateTime, 1000);
+            window.setInterval(checkStatus, 10000);
+            startAutoRefresh();
+        }, 500);
+
+        
+        function updateTime() {
+            document.getElementById('footer-time').innerText = new Date().toLocaleString();
+        }
+        
+        function startAutoRefresh() {
+            if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
+            if (autoRefreshEnabled) {
+                autoRefreshTimer = window.setInterval(pollForUpdates, 3000);
+            }
+        }
+        
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            var btn = document.getElementById('btn-auto');
+            if (autoRefreshEnabled) {
+                btn.innerHTML = '&#9210; Auto: ON';
+                btn.className = 'btn btn-primary';
+                startAutoRefresh();
+            } else {
+                btn.innerHTML = '&#9210; Auto: OFF';
+                btn.className = 'btn btn-secondary';
+                if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
+            }
+        }
+        
+        function pollForUpdates() {
+            doXhr("GET", "http://127.0.0.1:3001/history", function(err, data) {
+                if (err || !data) return;
+                var newData = data.history || [];
+                var newCount = newData.length;
+                var latestId = newData.length > 0 ? newData[0].id : '';
+                var currentLatestId = historyData.length > 0 ? historyData[0].id : '';
+                
+                // Detect changes: count changed OR latest item changed
+                if (newCount !== lastCount || latestId !== currentLatestId) {
+                    var wasAdded = newCount > lastCount;
+                    lastCount = newCount;
+                    historyData = newData;
+                    updateStats();
+                    applyFilters();
+                    // Flash indicator for new item
+                    if (wasAdded && newData.length > 0) {
+                        flashNewIndicator();
+                    }
+                }
+            });
+        }
+        
+        function flashNewIndicator() {
+            var footer = document.getElementById('footer-left');
+            if (footer) {
+                footer.innerHTML = '&#128994; New execution detected!';
+                window.setTimeout(function() {
+                    footer.innerHTML = '&#128274; Connected to localhost:3001';
+                }, 2000);
+            }
+        }
+        
+        function doRefresh() {
+            // Force reload history - reset lastCount to trigger update
+            lastCount = -1;
+            loadHistory();
+        }
+        
+        function doClearAll() {
+            if (!confirm('Are you sure you want to clear all execution history?')) return;
+            doXhr("DELETE", "http://127.0.0.1:3001/history", function(err, data) {
+                if (!err) {
+                    historyData = [];
+                    lastCount = 0;
+                    updateStats();
+                    applyFilters();
+                    var footer = document.getElementById('footer-left');
+                    if (footer) footer.innerHTML = '&#128465; History cleared';
+                }
+            });
+        }
+        
+        function doXhr(method, url, cb) {
+            try {
+                var x = new ActiveXObject("MSXML2.XMLHTTP");
+                x.open(method, url, true);
+                x.onreadystatechange = function() {
+                    if (x.readyState === 4) {
+                        if (x.status === 200) {
+                            try { cb(null, JSON.parse(x.responseText)); } catch(e) { cb(e, null); }
+                        } else { cb(new Error(x.status), null); }
+                    }
+                };
+                x.send();
+            } catch(e) { cb(e, null); }
+        }
+        
+        function doXhrDelete(url, cb) {
+            try {
+                var x = new ActiveXObject("MSXML2.XMLHTTP");
+                x.open("DELETE", url, true);
+                x.onreadystatechange = function() {
+                    if (x.readyState === 4) {
+                        cb(x.status === 200);
+                    }
+                };
+                x.send();
+            } catch(e) { cb(false); }
+        }
+        
+        function checkStatus() {
+            doXhr("GET", "http://127.0.0.1:3001/status", function(err, data) {
+                var el = document.getElementById('status');
+                if (err || !data) {
+                    el.className = 'status status-off';
+                    el.innerHTML = '&#9679; Offline';
+                } else {
+                    el.className = 'status status-on';
+                    el.innerHTML = '&#9679; Online';
+                }
+            });
+        }
+        
+        function doRefresh() {
+            loadHistory();
+        }
+        
+        function loadHistory() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('history-list').style.display = 'none';
+            document.getElementById('empty').style.display = 'none';
+            
+            doXhr("GET", "http://127.0.0.1:3001/history", function(err, data) {
+                document.getElementById('loading').style.display = 'none';
+                if (err || !data) {
+                    document.getElementById('empty').style.display = 'block';
+                    document.getElementById('empty').innerHTML = '<div class="empty-icon">&#9888;</div><div class="empty-title">Connection Error</div><div class="empty-text">Make sure the local service is running.</div>';
+                    return;
+                }
+                historyData = data.history || [];
+                lastCount = historyData.length;
+                updateStats();
+                applyFilters();
+            });
+        }
+        
+        function updateStats() {
+            var total = historyData.length, success = 0, failed = 0, totalTime = 0;
+            for (var i = 0; i < historyData.length; i++) {
+                if (historyData[i].success) success++; else failed++;
+                totalTime += historyData[i].duration || 0;
+            }
+            document.getElementById('stat-total').innerText = total;
+            document.getElementById('stat-success').innerText = success;
+            document.getElementById('stat-failed').innerText = failed;
+            document.getElementById('stat-avg').innerHTML = (total ? Math.round(totalTime / total) : 0) + '<span style="font-size:12px;">ms</span>';
+        }
+        
+        function applyFilters() {
+            var lang = document.getElementById('filter-lang').value;
+            var status = document.getElementById('filter-status').value;
+            filteredData = [];
+            for (var i = 0; i < historyData.length; i++) {
+                var item = historyData[i];
+                if (lang !== 'all' && item.language !== lang && !(lang === 'javascript' && item.language === 'js')) continue;
+                if (status === 'success' && !item.success) continue;
+                if (status === 'error' && item.success) continue;
+                filteredData.push(item);
+            }
+            render();
+        }
+        
+        function render() {
+            var list = document.getElementById('history-list');
+            var empty = document.getElementById('empty');
+            
+            if (filteredData.length === 0) {
+                list.style.display = 'none';
+                empty.style.display = 'block';
+                empty.innerHTML = '<div class="empty-icon">&#128196;</div><div class="empty-title">No Executions Yet</div><div class="empty-text">Run some code in CodeSynq to see the history here.</div>';
+                return;
+            }
+            
+            empty.style.display = 'none';
+            list.style.display = 'block';
+            
+            var html = '';
+            for (var i = 0; i < filteredData.length; i++) {
+                var item = filteredData[i];
+                var cls = item.success ? 'success' : 'failed';
+                var langCls = 'lang-' + (item.language === 'js' ? 'javascript' : item.language);
+                var d = new Date(item.timestamp);
+                var time = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+                
+                html += '<div class="history-card ' + cls + '" onclick="showDetail(' + i + ')">';
+                html += '<div class="card-header"><div class="card-header-row">';
+                html += '<div class="card-header-left">';
+                html += '<span class="lang-tag ' + langCls + '">' + item.language.toUpperCase() + '</span>';
+                html += '<span class="status-tag ' + (item.success ? 'ok' : 'err') + '">' + (item.success ? '&#10003; Success' : '&#10007; Failed') + '</span>';
+                html += '</div>';
+                html += '<div class="card-header-right"><span class="time-tag">' + time + '</span></div>';
+                html += '</div></div>';
+                
+                html += '<div class="card-body">';
+                html += '<div class="card-meta">';
+                html += '<span class="meta-item"><span class="meta-icon">&#9201;</span>' + item.duration + 'ms</span>';
+                html += '<span class="meta-item"><span class="meta-icon">&#128462;</span>' + item.codeLength + ' chars</span>';
+                html += '<span class="meta-item"><span class="meta-icon">&#128736;</span>Exit: ' + item.exitCode + '</span>';
+                html += '</div>';
+                html += '<div class="card-code">' + esc(item.codeSnippet) + '</div>';
+                
+                if (item.output && item.success) {
+                    html += '<div class="card-output">' + esc(item.output.substring(0, 100)) + '</div>';
+                }
+                if (item.error && !item.success) {
+                    html += '<div class="card-error">' + esc(item.error.substring(0, 100)) + '</div>';
+                }
+                
+                html += '</div></div>';
+            }
+            list.innerHTML = html;
+        }
+        
+        function esc(t) {
+            if (!t) return '';
+            return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+        
+        function showDetail(idx) {
+            var item = filteredData[idx];
+            if (!item) return;
+            var d = new Date(item.timestamp);
+            
+            var html = '<div class="detail-grid"><div class="detail-row">';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Language</div><div class="detail-value">' + item.language.toUpperCase() + '</div></div></div>';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Status</div><div class="detail-value" style="color:' + (item.success ? '#3fb950' : '#f85149') + ';">' + (item.success ? 'Success' : 'Failed') + '</div></div></div>';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Duration</div><div class="detail-value">' + item.duration + ' ms</div></div></div>';
+            html += '</div><div class="detail-row">';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Exit Code</div><div class="detail-value">' + item.exitCode + '</div></div></div>';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Code Size</div><div class="detail-value">' + item.codeLength + ' chars</div></div></div>';
+            html += '<div class="detail-cell"><div class="detail-box"><div class="detail-label">Execution ID</div><div class="detail-value" style="font-size:11px;">' + item.id.substring(0,8) + '</div></div></div>';
+            html += '</div></div>';
+            
+            html += '<div class="section"><div class="section-title">Executed At</div><div style="color:#8b949e;font-size:13px;">' + d.toLocaleString() + '</div></div>';
+            
+            html += '<div class="section"><div class="section-title">Source Code</div><div class="section-box">' + esc(item.codeSnippet) + '</div></div>';
+            
+            if (item.output) {
+                html += '<div class="section"><div class="section-title">Output</div><div class="section-box output">' + esc(item.output) + '</div></div>';
+            }
+            if (item.error) {
+                html += '<div class="section"><div class="section-title">Error</div><div class="section-box error">' + esc(item.error) + '</div></div>';
+            }
+            
+            document.getElementById('modal-body').innerHTML = html;
+            document.getElementById('modal').className = 'modal-overlay open';
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').className = 'modal-overlay';
+        }
+        
+        function doClearAll() {
+            var result = window.confirm('Are you sure you want to clear all execution history?');
+            if (!result) return;
+            
+            doXhrDelete("http://127.0.0.1:3001/history", function(success) {
+                if (success) {
+                    historyData = [];
+                    lastCount = 0;
+                    updateStats();
+                    applyFilters();
+                } else {
+                    window.alert('Failed to clear history. Make sure the service is running.');
+                }
+            });
+        }
+        
+        // Modal click handler
+        document.onclick = function(e) {
+            var modal = document.getElementById('modal');
+            if (e.srcElement === modal) {
+                closeModal();
+            }
+        };
+    </script>
+</body>
+</html>

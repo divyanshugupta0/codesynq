@@ -1,0 +1,415 @@
+<html>
+<head>
+    <title>CodeSynq Local Execute Engine - Setup</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <HTA:APPLICATION ID="CodeSynqSetup" APPLICATIONNAME="CodeSynq Setup" BORDER="thin" BORDERSTYLE="normal" CAPTION="yes" ICON="codesynq.ico" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" SYSMENU="yes" VERSION="1.0" WINDOWSTATE="normal"/>
+    <style>
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; margin-top: 30px; } to { opacity: 1; margin-top: 0; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 5px #667eea; } 50% { box-shadow: 0 0 20px #667eea, 0 0 30px #764ba2; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(145deg, #0a0a1a 0%, #1a1a3a 50%, #0f0f2f 100%); min-height: 100%; color: #fff; overflow: hidden; animation: fadeIn 0.8s ease; }
+        
+        .container { width: 100%; height: 100%; position: relative; }
+        
+        /* Decorative background elements */
+        .bg-orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.3; pointer-events: none; }
+        .bg-orb-1 { width: 200px; height: 200px; background: #667eea; top: -50px; right: -50px; }
+        .bg-orb-2 { width: 150px; height: 150px; background: #764ba2; bottom: 50px; left: -30px; }
+        
+        /* Header */
+        .header { padding: 18px 25px; background: linear-gradient(180deg, rgba(102,126,234,0.15) 0%, transparent 100%); border-bottom: 1px solid rgba(102,126,234,0.3); position: relative; z-index: 10; }
+        .header-inner { display: inline-block; }
+        .logo { width: 48px; height: 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; display: inline-block; text-align: center; line-height: 48px; vertical-align: middle; margin-right: 14px; box-shadow: 0 4px 15px rgba(102,126,234,0.4); animation: glow 3s ease-in-out infinite; font-family: Consolas, monospace; font-size: 18px; font-weight: bold; color: #fff; }
+        .header-text { display: inline-block; vertical-align: middle; max-width: 350px; }
+        .header-text h1 { font-size: 18px; font-weight: 600; color: #e8e8ff; margin: 0; letter-spacing: 0.3px; }
+        .header-text p { font-size: 11px; color: #8888bb; margin: 4px 0 0 0; }
+        .version-badge { display: inline-block; background: rgba(102,126,234,0.25); border: 1px solid rgba(102,126,234,0.5); padding: 2px 8px; border-radius: 10px; font-size: 9px; color: #99aaff; margin-left: 6px; vertical-align: middle; }
+        
+        /* Main Content */
+        .main-content { padding: 25px; height: 430px; overflow-y: auto; position: relative; z-index: 10; }
+        .screen { display: none; animation: slideUp 0.5s ease; }
+        .screen.active { display: block; }
+        
+        /* Cards */
+        .card { background: linear-gradient(145deg, rgba(30,40,80,0.8) 0%, rgba(20,25,50,0.9) 100%); border: 1px solid rgba(102,126,234,0.25); border-radius: 16px; padding: 22px; margin-bottom: 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05); }
+        .card-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: #e8e8ff; }
+        .card-icon { display: inline-block; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; text-align: center; line-height: 32px; font-size: 16px; margin-right: 12px; vertical-align: middle; box-shadow: 0 2px 8px rgba(102,126,234,0.3); }
+        .card-title-text { vertical-align: middle; }
+        .card p { color: #a0a0c0; font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+        
+        /* Buttons */
+        .action-buttons { margin-top: 18px; text-align: center; }
+        .btn { display: inline-block; padding: 15px 28px; border: none; border-radius: 10px; font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; margin: 0 6px; text-align: center; min-width: 170px; transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .btn:before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transition: left 0.5s; }
+        .btn:hover:before { left: 100%; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; box-shadow: 0 4px 15px rgba(102,126,234,0.4); }
+        .btn-primary:hover { box-shadow: 0 6px 25px rgba(102,126,234,0.6); transform: translateY(-2px); }
+        .btn-danger { background: linear-gradient(135deg, #e05577 0%, #f093fb 100%); color: white; box-shadow: 0 4px 15px rgba(224,85,119,0.4); }
+        .btn-danger:hover { box-shadow: 0 6px 25px rgba(224,85,119,0.6); transform: translateY(-2px); }
+        .btn-secondary { background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); }
+        
+        /* Language Options */
+        .language-grid { display: table; width: 100%; }
+        .language-row { display: table-row; }
+        .language-cell { display: table-cell; width: 50%; padding: 5px; }
+        .language-item { background: linear-gradient(145deg, rgba(35,45,75,0.9) 0%, rgba(25,30,55,0.9) 100%); border: 2px solid rgba(60,70,110,0.5); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.3s ease; }
+        .language-item:hover { background: linear-gradient(145deg, rgba(45,55,95,0.9) 0%, rgba(35,40,70,0.9) 100%); border-color: rgba(102,126,234,0.5); transform: scale(1.02); }
+        .language-item.selected { background: linear-gradient(145deg, rgba(50,60,120,0.9) 0%, rgba(40,50,100,0.9) 100%); border-color: #667eea; box-shadow: 0 0 15px rgba(102,126,234,0.3); }
+        .language-item.installed { background: linear-gradient(145deg, rgba(30,60,45,0.9) 0%, rgba(20,45,35,0.9) 100%); border-color: #4caf50; }
+        .language-item.required { opacity: 0.85; cursor: default; }
+        .language-icon { display: inline-block; width: 38px; height: 38px; border-radius: 10px; text-align: center; line-height: 38px; font-size: 14px; font-weight: bold; vertical-align: middle; margin-right: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .language-icon.js { background: linear-gradient(135deg, #f7df1e 0%, #e5c100 100%); color: #000; }
+        .language-icon.py { background: linear-gradient(135deg, #3776ab 0%, #ffd43b 100%); color: #fff; }
+        .language-icon.java { background: linear-gradient(135deg, #f89820 0%, #5382a1 100%); color: #fff; }
+        .language-icon.cpp { background: linear-gradient(135deg, #00599C 0%, #004482 100%); color: #fff; }
+        .language-info { display: inline-block; vertical-align: middle; }
+        .language-info h4 { font-size: 13px; font-weight: 600; color: #e8e8ff; margin: 0; }
+        .language-info p { font-size: 10px; color: #8888aa; margin: 3px 0 0 0; }
+        .language-status { display: block; margin-top: 8px; padding: 3px 8px; border-radius: 8px; font-size: 9px; font-weight: 600; text-transform: uppercase; text-align: center; }
+        .status-installed { background: rgba(76,175,80,0.2); color: #6fcf73; }
+        .status-required { background: rgba(102,126,234,0.2); color: #8899dd; }
+        .status-optional { background: rgba(255,255,255,0.08); color: #8888aa; }
+        
+        /* Progress */
+        .progress-bar-wrapper { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 18px; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #667eea 100%); background-size: 200% 100%; border-radius: 3px; width: 0%; animation: shimmer 2s linear infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .progress-steps { max-height: 140px; overflow-y: auto; }
+        .progress-step { padding: 10px 14px; background: rgba(30,40,70,0.6); border-radius: 8px; font-size: 12px; margin-bottom: 8px; color: #a0a0c0; border-left: 3px solid transparent; transition: all 0.3s ease; }
+        .progress-step.running { border-left-color: #667eea; background: rgba(102,126,234,0.1); }
+        .progress-step.completed { border-left-color: #4caf50; }
+        .progress-step.error { border-left-color: #f44336; }
+        .step-icon { display: inline-block; width: 22px; height: 22px; border-radius: 50%; text-align: center; line-height: 22px; font-size: 11px; margin-right: 10px; vertical-align: middle; }
+        .progress-step.pending .step-icon { background: rgba(255,255,255,0.1); color: #666; }
+        .progress-step.running .step-icon { background: rgba(102,126,234,0.3); color: #8899ee; animation: pulse 1s infinite; }
+        .progress-step.completed .step-icon { background: rgba(76,175,80,0.3); color: #6fcf73; }
+        .progress-step.error .step-icon { background: rgba(244,67,54,0.3); color: #ff6b6b; }
+        
+        /* Log */
+        .log-output { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; font-family: 'Consolas', monospace; font-size: 11px; max-height: 90px; overflow-y: auto; margin-top: 14px; color: #7777aa; }
+        .log-line { padding: 2px 0; }
+        .log-line.success { color: #6fcf73; }
+        .log-line.error { color: #ff6b6b; }
+        .log-line.info { color: #8899ee; }
+        
+        /* Footer */
+        .footer { padding: 14px 25px; background: linear-gradient(0deg, rgba(102,126,234,0.1) 0%, transparent 100%); border-top: 1px solid rgba(102,126,234,0.2); font-size: 10px; color: #5566aa; position: relative; z-index: 10; }
+        .footer-right { float: right; }
+        .clearfix { clear: both; }
+        
+        /* Success */
+        .success-container { text-align: center; padding: 25px 20px; }
+        .success-icon { width: 80px; height: 80px; background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%); border-radius: 50%; text-align: center; line-height: 80px; font-size: 40px; color: white; margin: 0 auto 18px; box-shadow: 0 8px 30px rgba(76,175,80,0.4); animation: pulse 2s ease infinite; }
+        .success-title { font-size: 22px; font-weight: 600; margin-bottom: 10px; color: #e8e8ff; }
+        .success-subtitle { color: #8888aa; font-size: 13px; margin-bottom: 22px; line-height: 1.5; }
+        .status-box { background: rgba(30,40,70,0.6); border-radius: 12px; padding: 18px; margin-bottom: 18px; text-align: left; border: 1px solid rgba(102,126,234,0.2); }
+        .status-box p { font-size: 12px; color: #a0a0c0; margin: 6px 0; }
+        .tip-text { color: #8899ee; font-size: 11px; margin-bottom: 18px; }
+        
+        ul { color: #a0a0c0; font-size: 12px; margin: 12px 0 0 25px; line-height: 2; }
+        ul li { position: relative; }
+        
+        /* Scrollbar - IE compatible */
+        body { scrollbar-face-color: #4a5a8a; scrollbar-track-color: #1a1a3a; scrollbar-arrow-color: #667eea; scrollbar-shadow-color: #0a0a1a; scrollbar-highlight-color: #667eea; scrollbar-3dlight-color: #1a1a3a; scrollbar-darkshadow-color: #0a0a1a; }
+        .main-content { scrollbar-face-color: #4a5a8a; scrollbar-track-color: #1a1a3a; scrollbar-arrow-color: #667eea; }
+        .progress-steps { scrollbar-face-color: #4a5a8a; scrollbar-track-color: #1a1a3a; scrollbar-arrow-color: #667eea; }
+        .log-output { scrollbar-face-color: #4a5a8a; scrollbar-track-color: #0a0a1a; scrollbar-arrow-color: #667eea; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="bg-orb bg-orb-1"></div>
+        <div class="bg-orb bg-orb-2"></div>
+        
+        <div class="header">
+            <div class="header-inner">
+                <div class="logo">&lt;/&gt;</div>
+                <div class="header-text">
+                    <h1>CodeSynq Local Execute Engine <span class="version-badge">v1.0</span></h1>
+                    <p>Secure local code execution service</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <!-- Welcome -->
+            <div class="screen active" id="screen-welcome">
+                <div class="card">
+                    <div class="card-title"><span class="card-icon">&#9889;</span><span class="card-title-text">Welcome to CodeSynq Setup</span></div>
+                    <p>This wizard will help you install or remove the CodeSynq Local Execute Engine. Run code securely on your own machine with full language support.</p>
+                    <p style="color:#7777aa;font-size:12px;">Select an option below to get started:</p>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="showScreen('screen-install')">&#128229; Install Engine</button>
+                    <button class="btn btn-danger" onclick="showScreen('screen-uninstall-confirm')">&#128465; Remove Engine</button>
+                </div>
+            </div>
+            
+            <!-- Install -->
+            <div class="screen" id="screen-install">
+                <div class="card">
+                    <div class="card-title"><span class="card-icon">&#9881;</span><span class="card-title-text">Configure Language Support</span></div>
+                    <p style="margin-bottom:15px;">Click to select additional languages. Installed languages are highlighted in green.</p>
+                    <div class="language-grid">
+                        <div class="language-row">
+                            <div class="language-cell">
+                                <div class="language-item required" id="lang-js">
+                                    <div class="language-icon js">JS</div>
+                                    <div class="language-info"><h4>JavaScript</h4><p>Node.js Runtime</p></div>
+                                    <span class="language-status status-required">Required</span>
+                                </div>
+                            </div>
+                            <div class="language-cell">
+                                <div class="language-item" id="lang-python" onclick="toggleLanguage('python')">
+                                    <div class="language-icon py">Py</div>
+                                    <div class="language-info"><h4>Python</h4><p id="python-version">Checking...</p></div>
+                                    <span class="language-status status-optional" id="python-status">Optional</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="language-row">
+                            <div class="language-cell">
+                                <div class="language-item" id="lang-java" onclick="toggleLanguage('java')">
+                                    <div class="language-icon java">Jv</div>
+                                    <div class="language-info"><h4>Java</h4><p id="java-version">Checking...</p></div>
+                                    <span class="language-status status-optional" id="java-status">Optional</span>
+                                </div>
+                            </div>
+                            <div class="language-cell">
+                                <div class="language-item" id="lang-cpp" onclick="toggleLanguage('cpp')">
+                                    <div class="language-icon cpp">C++</div>
+                                    <div class="language-info"><h4>C/C++</h4><p id="cpp-version">Checking...</p></div>
+                                    <span class="language-status status-optional" id="cpp-status">Optional</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="showScreen('screen-welcome')">&#8592; Back</button>
+                    <button class="btn btn-primary" onclick="startInstallation()">&#128640; Install Now</button>
+                </div>
+            </div>
+            
+            <!-- Progress -->
+            <div class="screen" id="screen-progress">
+                <div class="card">
+                    <div class="card-title"><span class="card-icon">&#9203;</span><span class="card-title-text" id="progress-title">Installing...</span></div>
+                    <div class="progress-bar-wrapper"><div class="progress-bar" id="progress-bar"></div></div>
+                    <div class="progress-steps" id="progress-steps"></div>
+                    <div class="log-output" id="log-output"><div class="log-line info">Initializing setup...</div></div>
+                </div>
+            </div>
+            
+            <!-- Success -->
+            <div class="screen" id="screen-success">
+                <div class="card success-container">
+                    <div class="success-icon">&#10003;</div>
+                    <h2 class="success-title">Installation Complete!</h2>
+                    <p class="success-subtitle">CodeSynq Local Execute Engine is now running.<br>It will start automatically with Windows.</p>
+                    <div class="status-box">
+                        <div class="card-title" style="margin-bottom:10px;"><span class="card-icon">&#127760;</span><span class="card-title-text">Language Status</span></div>
+                        <div id="final-language-status"></div>
+                    </div>
+                    <p class="tip-text">&#128161; Refresh CodeSynq in your browser to connect.</p>
+                </div>
+                <div class="action-buttons"><button class="btn btn-primary" onclick="self.close()">&#10003; Close Setup</button></div>
+            </div>
+            
+            <!-- Uninstall Confirm -->
+            <div class="screen" id="screen-uninstall-confirm">
+                <div class="card">
+                    <div class="card-title"><span class="card-icon" style="background:linear-gradient(135deg,#e05577,#f093fb);">&#9888;</span><span class="card-title-text">Confirm Removal</span></div>
+                    <p>Are you sure you want to remove CodeSynq Local Execute Engine?</p>
+                    <p style="color:#7777aa;">This action will:</p>
+                    <ul><li>Stop the running service</li><li>Remove from Windows startup</li><li>Delete all installed files</li><li>Remove desktop shortcut</li></ul>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="showScreen('screen-welcome')">&#8592; Cancel</button>
+                    <button class="btn btn-danger" onclick="startUninstallation()">&#128465; Yes, Remove</button>
+                </div>
+            </div>
+            
+            <!-- Uninstall Success -->
+            <div class="screen" id="screen-uninstall-success">
+                <div class="card success-container">
+                    <div class="success-icon" style="background:linear-gradient(135deg,#e05577,#f093fb);">&#10003;</div>
+                    <h2 class="success-title">Removal Complete!</h2>
+                    <p class="success-subtitle">CodeSynq Local Execute Engine has been removed.</p>
+                    <p style="color:#7777aa;font-size:11px;">Run Setup.hta again to reinstall anytime.</p>
+                </div>
+                <div class="action-buttons"><button class="btn btn-primary" onclick="self.close()">&#10003; Close</button></div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <span>&#128274; Port 3001 | %LOCALAPPDATA%\CodeSynq</span>
+            <span class="footer-right">&#169; CodeSynq 2026</span>
+            <div class="clearfix"></div>
+        </div>
+    </div>
+    
+    <script type="text/javascript">
+        var shell = new ActiveXObject("WScript.Shell");
+        var fso = new ActiveXObject("Scripting.FileSystemObject");
+        var selectedLanguages = { python: false, java: false, cpp: false };
+        var installedLanguages = { node: false, python: false, java: false, cpp: false };
+        
+        window.resizeTo(540, 640);
+        window.moveTo((screen.availWidth - 540) / 2, (screen.availHeight - 640) / 2);
+        window.setTimeout(function() { checkInstalledLanguages(); }, 300);
+        
+        function showScreen(id) {
+            var divs = document.getElementsByTagName('div');
+            for (var i = 0; i < divs.length; i++) {
+                if (divs[i].className && divs[i].className.indexOf('screen') >= 0) divs[i].className = 'screen';
+            }
+            document.getElementById(id).className = 'screen active';
+        }
+        
+        function runCommand(cmd) {
+            try {
+                var exec = shell.Exec("cmd.exe /c " + cmd);
+                var out = "";
+                while (!exec.StdOut.AtEndOfStream) out += exec.StdOut.ReadLine() + "\n";
+                while (!exec.StdErr.AtEndOfStream) out += exec.StdErr.ReadLine() + "\n";
+                return { success: true, output: out };
+            } catch (e) { return { success: false, output: e.message }; }
+        }
+        
+        function checkInstalledLanguages() {
+            var r = runCommand("where node 2>nul");
+            if (r.output.indexOf("node") >= 0) { installedLanguages.node = true; document.getElementById('lang-js').className = 'language-item installed required'; }
+            r = runCommand("python --version 2>&1");
+            if (r.output.indexOf("Python") >= 0) { installedLanguages.python = true; document.getElementById('python-version').innerText = r.output.replace(/[\r\n]/g,''); document.getElementById('python-status').innerText = 'Installed'; document.getElementById('python-status').className = 'language-status status-installed'; document.getElementById('lang-python').className = 'language-item installed'; }
+            else { document.getElementById('python-version').innerText = 'Not installed'; }
+            r = runCommand("java -version 2>&1");
+            if (r.output.toLowerCase().indexOf("version") >= 0) { installedLanguages.java = true; document.getElementById('java-version').innerText = 'Installed'; document.getElementById('java-status').innerText = 'Installed'; document.getElementById('java-status').className = 'language-status status-installed'; document.getElementById('lang-java').className = 'language-item installed'; }
+            else { document.getElementById('java-version').innerText = 'Not installed'; }
+            r = runCommand("gcc --version 2>&1");
+            if (r.output.toLowerCase().indexOf("gcc") >= 0) { installedLanguages.cpp = true; document.getElementById('cpp-version').innerText = 'Installed'; document.getElementById('cpp-status').innerText = 'Installed'; document.getElementById('cpp-status').className = 'language-status status-installed'; document.getElementById('lang-cpp').className = 'language-item installed'; }
+            else { document.getElementById('cpp-version').innerText = 'Not installed'; }
+        }
+        
+        function toggleLanguage(lang) {
+            if (installedLanguages[lang]) return;
+            selectedLanguages[lang] = !selectedLanguages[lang];
+            document.getElementById('lang-' + lang).className = selectedLanguages[lang] ? 'language-item selected' : 'language-item';
+        }
+        
+        function addLog(msg, type) { var el = document.getElementById('log-output'); var d = document.createElement('div'); d.className = 'log-line ' + (type || ''); d.innerText = msg; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+        function updateProgress(p) { document.getElementById('progress-bar').style.width = p + '%'; }
+        function addProgressStep(id, txt, status) {
+            var c = document.getElementById('progress-steps'), e = document.getElementById('step-' + id);
+            var icons = { pending: 'O', running: '*', completed: '\u2713', error: 'X' };
+            if (e) { e.className = 'progress-step ' + status; e.getElementsByTagName('span')[0].innerText = icons[status]; }
+            else { var s = document.createElement('div'); s.id = 'step-' + id; s.className = 'progress-step ' + status; s.innerHTML = '<span class="step-icon">' + icons[status] + '</span> ' + txt; c.appendChild(s); }
+        }
+        function getScriptDir() { var p = unescape(document.location.pathname); if (p.charAt(0) === '/') p = p.substr(1); return p.replace(/\//g, '\\').substr(0, p.replace(/\//g, '\\').lastIndexOf('\\') + 1); }
+        
+        function startInstallation() {
+            showScreen('screen-progress'); document.getElementById('progress-title').innerText = 'Installing Engine...';
+            var steps = [{ id: 'node', text: 'Checking Node.js...', action: installNode }];
+            if (selectedLanguages.python && !installedLanguages.python) steps.push({ id: 'python', text: 'Installing Python...', action: installPython });
+            if (selectedLanguages.java && !installedLanguages.java) steps.push({ id: 'java', text: 'Installing Java...', action: installJava });
+            steps.push({ id: 'files', text: 'Installing service files...', action: installFiles });
+            steps.push({ id: 'startup', text: 'Configuring startup...', action: addToStartup });
+            steps.push({ id: 'shortcut', text: 'Creating shortcut...', action: createShortcut });
+            steps.push({ id: 'start', text: 'Starting service...', action: startService });
+            runSteps(steps, 0);
+        }
+        
+        function runSteps(steps, i) {
+            if (i >= steps.length) { showSuccessScreen(); return; }
+            var s = steps[i], p = Math.round(((i + 1) / steps.length) * 100);
+            addProgressStep(s.id, s.text, 'running'); addLog('> ' + s.text, 'info'); updateProgress(p - 10);
+            window.setTimeout(function() {
+                var r = s.action();
+                addProgressStep(s.id, s.text.replace('...', ''), r.success ? 'completed' : 'error');
+                addLog('  ' + r.message, r.success ? 'success' : 'error');
+                updateProgress(p);
+                window.setTimeout(function() { runSteps(steps, i + 1); }, 250);
+            }, 400);
+        }
+        
+        function installNode() { if (installedLanguages.node) return { success: true, message: 'Node.js already installed' }; addLog('  Downloading Node.js...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.10.0/node-v20.10.0-x64.msi' -OutFile '%TEMP%\\node_installer.msi'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\node_installer.msi"; if (fso.FileExists(t)) { runCommand("msiexec /i \"" + t + "\" /qn /norestart"); installedLanguages.node = true; return { success: true, message: 'Node.js installed' }; } return { success: false, message: 'Download failed' }; }
+        function installPython() { addLog('  Downloading Python...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe' -OutFile '%TEMP%\\python_installer.exe'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\python_installer.exe"; if (fso.FileExists(t)) { runCommand("\"" + t + "\" /quiet InstallAllUsers=1 PrependPath=1"); installedLanguages.python = true; return { success: true, message: 'Python installed' }; } return { success: false, message: 'Download failed' }; }
+        function installJava() { addLog('  Downloading Java...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://download.java.net/java/GA/jdk21.0.1/415e3f918a1f4062a0074a2794853d0d/12/GPL/openjdk-21.0.1_windows-x64_bin.zip' -OutFile '%TEMP%\\openjdk.zip'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\openjdk.zip"; if (fso.FileExists(t)) { runCommand("powershell -Command \"Expand-Archive -Path '" + t + "' -DestinationPath 'C:\\Program Files\\Java' -Force\""); installedLanguages.java = true; return { success: true, message: 'Java installed' }; } return { success: false, message: 'Download failed' }; }
+        function installFiles() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", c = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq"; if (!fso.FolderExists(c)) fso.CreateFolder(c); if (!fso.FolderExists(d)) fso.CreateFolder(d); runCommand("xcopy /Y /E /I \"" + getScriptDir() + "*.*\" \"" + d + "\\\""); return { success: true, message: 'Files installed' }; }
+        function addToStartup() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", s = d + "\\start-silent.vbs"; var f = fso.CreateTextFile(s, true); f.Write("Set WshShell = CreateObject(\"WScript.Shell\")\r\nWshShell.Run chr(34) & \"" + d + "\\start-service.bat\" & chr(34), 0\r\nSet WshShell = Nothing"); f.Close(); runCommand("reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /t REG_SZ /d \"\\\"" + s + "\\\"\" /f"); return { success: true, message: 'Startup configured' }; }
+        function createShortcut() { 
+            var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; 
+            try { 
+                var desktop = shell.SpecialFolders("Desktop"); 
+                var sysRoot = shell.ExpandEnvironmentStrings("%SystemRoot%");
+                // Service Manager shortcut
+                var sc1 = shell.CreateShortcut(desktop + "\\CodeSynq Service Manager.lnk"); 
+                sc1.TargetPath = "mshta.exe"; 
+                sc1.Arguments = "\"" + d + "\\Setup.hta\""; 
+                sc1.WorkingDirectory = d; 
+                sc1.IconLocation = sysRoot + "\\System32\\shell32.dll,21"; // Settings icon
+                sc1.Description = "Manage CodeSynq Local Execution Service"; 
+                sc1.Save(); 
+                // Execution Panel shortcut
+                var sc2 = shell.CreateShortcut(desktop + "\\CodeSynq Execution Panel.lnk"); 
+                sc2.TargetPath = "mshta.exe"; 
+                sc2.Arguments = "\"" + d + "\\ExecutionPanel.hta\""; 
+                sc2.WorkingDirectory = d; 
+                sc2.IconLocation = sysRoot + "\\System32\\shell32.dll,144"; // Report/Document icon
+                sc2.Description = "View CodeSynq Execution History"; 
+                sc2.Save(); 
+                return { success: true, message: 'Desktop shortcuts created' }; 
+            } catch (e) { return { success: false, message: e.message }; } 
+        }
+        function startService() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); try { shell.Run("wscript.exe \"" + d + "\\start-silent.vbs\"", 0, false); return { success: true, message: 'Service started on port 3001' }; } catch (e) { return { success: false, message: e.message }; } }
+        function showSuccessScreen() { showScreen('screen-success'); var h = '<p>' + (installedLanguages.node ? '\u2705' : '\u26AA') + ' JavaScript - ' + (installedLanguages.node ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.python ? '\u2705' : '\u26AA') + ' Python - ' + (installedLanguages.python ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.java ? '\u2705' : '\u26AA') + ' Java - ' + (installedLanguages.java ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.cpp ? '\u2705' : '\u26AA') + ' C/C++ - ' + (installedLanguages.cpp ? 'Ready' : 'N/A') + '</p>'; document.getElementById('final-language-status').innerHTML = h; }
+        
+        function startUninstallation() { showScreen('screen-progress'); document.getElementById('progress-title').innerText = 'Removing...'; document.getElementById('progress-steps').innerHTML = ''; document.getElementById('log-output').innerHTML = '<div class="log-line info">Starting removal...</div>'; var steps = [{ id: 'stop', text: 'Stopping service...', action: stopService }, { id: 'startup', text: 'Removing startup...', action: removeFromStartup }, { id: 'shortcut', text: 'Removing shortcut...', action: removeShortcut }, { id: 'files', text: 'Deleting files...', action: deleteFiles }, { id: 'temp', text: 'Cleaning up...', action: cleanupTemp }]; runUninstallSteps(steps, 0); }
+        function runUninstallSteps(steps, i) { if (i >= steps.length) { showScreen('screen-uninstall-success'); return; } var s = steps[i], p = Math.round(((i + 1) / steps.length) * 100); addProgressStep(s.id, s.text, 'running'); addLog('> ' + s.text, 'info'); updateProgress(p - 10); window.setTimeout(function() { var r = s.action(); addProgressStep(s.id, s.text.replace('...', ''), r.success ? 'completed' : 'error'); addLog('  ' + r.message, r.success ? 'success' : 'error'); updateProgress(p); window.setTimeout(function() { runUninstallSteps(steps, i + 1); }, 250); }, 400); }
+        function stopService() { runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); return { success: true, message: 'Service stopped' }; }
+        function removeFromStartup() { runCommand("reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /f"); return { success: true, message: 'Startup entry removed' }; }
+        function removeShortcut() { 
+            try {
+                var desktop = shell.SpecialFolders("Desktop"); 
+                var p1 = desktop + "\\CodeSynq Service Manager.lnk"; 
+                var p2 = desktop + "\\CodeSynq Execution Panel.lnk"; 
+                var p3 = desktop + "\\CodeSynq Local Service.lnk"; 
+                try { if (fso.FileExists(p1)) fso.DeleteFile(p1); } catch(e) {}
+                try { if (fso.FileExists(p2)) fso.DeleteFile(p2); } catch(e) {}
+                try { if (fso.FileExists(p3)) fso.DeleteFile(p3); } catch(e) {}
+            } catch(e) {}
+            return { success: true, message: 'Shortcuts removed' }; 
+        }
+        function deleteFiles() { 
+            var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; 
+            var c = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq"; 
+            var deleted = false;
+            try {
+                // Try to delete individual files first (less likely to fail)
+                if (fso.FolderExists(d)) {
+                    var files = new Enumerator(fso.GetFolder(d).Files);
+                    for (; !files.atEnd(); files.moveNext()) {
+                        try { fso.DeleteFile(files.item().Path, true); } catch(e) {}
+                    }
+                    // Try to delete subfolders
+                    var folders = new Enumerator(fso.GetFolder(d).SubFolders);
+                    for (; !folders.atEnd(); folders.moveNext()) {
+                        try { fso.DeleteFolder(folders.item().Path, true); } catch(e) {}
+                    }
+                    // Try to delete the folder itself
+                    try { fso.DeleteFolder(d, true); deleted = true; } catch(e) {}
+                }
+                // Try to delete parent folder if empty
+                try { if (fso.FolderExists(c)) fso.DeleteFolder(c, true); } catch(e) {}
+            } catch(e) {}
+            return { success: true, message: deleted ? 'Files deleted' : 'Files marked for deletion (may need manual cleanup)' }; 
+        }
+        function cleanupTemp() { var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\codesynq_local"; if (fso.FolderExists(t)) fso.DeleteFolder(t, true); return { success: true, message: 'Cleanup complete' }; }
+    </script>
+</body>
+</html>

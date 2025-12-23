@@ -164,18 +164,7 @@ class ExecutionManager {
         if (this.onExecutionOutput) {
             this.onExecutionOutput(data);
         }
-
-        // Also send to terminal if available
-        if (typeof writeToTerminal === 'function') {
-            const text = data.data || '';
-            if (data.type === 'stderr') {
-                writeToTerminal('\x1b[31m' + text + '\x1b[0m'); // Red for errors
-            } else if (data.type === 'info') {
-                writeToTerminal('\x1b[36m' + text + '\x1b[0m'); // Cyan for info
-            } else {
-                writeToTerminal(text);
-            }
-        }
+        // Output will be displayed by the caller after execution completes
     }
 
     // Create status UI in the status bar
@@ -344,7 +333,7 @@ class ExecutionManager {
                     </div>
                     <ol style="margin: 0; padding-left: 20px; line-height: 2; color: #e0e0e0;">
                         <li>Click <strong style="color: #4ec9b0;">Download & Install</strong> button below</li>
-                        <li>Extract the ZIP and run <strong style="color: #4ec9b0;">INSTALL.bat</strong></li>
+                        <li>Extract the ZIP and run <strong style="color: #4ec9b0;">setup.hta</strong></li>
                         <li>Done! Service starts automatically with Windows</li>
                     </ol>
                 </div>
@@ -645,24 +634,10 @@ The service runs on http://127.0.0.1:3001`;
             throw new Error('Local execution service is not running');
         }
 
-        // Write info to terminal
-        if (typeof writeToTerminal === 'function') {
-            writeToTerminal('\x1b[36m[Local] Executing ' + language + ' code...\x1b[0m\r\n');
-        }
-
         const result = await this.localClient.execute(code, language);
 
         if (this.onExecutionComplete) {
             this.onExecutionComplete(result);
-        }
-
-        // Show final status
-        if (typeof writeToTerminal === 'function') {
-            if (result.success) {
-                writeToTerminal('\r\n\x1b[32m[Local] Process exited with code 0\x1b[0m\r\n');
-            } else if (result.error) {
-                writeToTerminal('\r\n\x1b[31m' + result.error + '\x1b[0m\r\n');
-            }
         }
 
         return result;

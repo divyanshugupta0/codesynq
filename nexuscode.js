@@ -2666,16 +2666,70 @@ function executeCode() {
 
     console.log('=== EXECUTE CODE DEBUG ===');
     console.log('Language:', language);
-    console.log('Code:', code);
-    console.log('Socket connected:', window.socket && window.socket.connected);
-    console.log('Current room:', window.currentRoom);
+    console.log('Code length:', code.length);
+    console.log('ExecutionManager available:', !!window.executionManager);
+    console.log('Local available:', window.executionManager?.isLocalAvailable);
 
-    // Try server execution if connected
+    // Use ExecutionManager if available (handles local/remote switching)
+    if (window.executionManager && (window.executionManager.isLocalAvailable || window.executionManager.executionMode === 'local')) {
+        console.log('Using ExecutionManager for execution');
+
+        window.executionManager.execute(code, language, {
+            roomId: window.currentRoom,
+            socket: window.socket
+        }).then(result => {
+            console.log('Execution result:', result);
+            resetRunButton();
+
+            if (result.pending) {
+                // Remote execution - result will come via socket
+                return;
+            }
+
+            // Display output based on language
+            if (language === 'javascript') {
+                // JavaScript goes to console panel
+                const consolePanel = document.getElementById('console');
+                if (consolePanel) consolePanel.innerHTML = '';
+
+                if (result.error) {
+                    displayConsoleOutput(result.error, 'error');
+                } else if (result.output && result.output.trim()) {
+                    const lines = result.output.trim().split('\n');
+                    lines.forEach(line => {
+                        if (line.trim()) displayConsoleOutput(line, 'log');
+                    });
+                } else {
+                    displayConsoleOutput('Code executed successfully', 'success');
+                }
+            } else {
+                // Other languages go to terminal - clear first, then display
+                if (typeof clearTerminal === 'function') {
+                    clearTerminal();
+                } else if (typeof term !== 'undefined' && term && term.clear) {
+                    term.clear();
+                }
+                // Pass null for complexity to hide complexity analysis for local execution
+                displayOutputInTerminal(result.output || '', result.error || '', null, result.exitCode);
+            }
+        }).catch(error => {
+            console.error('Execution error:', error);
+            resetRunButton();
+            showNotification('Execution error: ' + error.message, 'error');
+        });
+
+        // Show HTML preview immediately for better UX
+        if (language === 'html') {
+            showPreview(code);
+        }
+        return;
+    }
+
+    // Fallback: Try server execution if connected
     if (window.socket && window.socket.connected) {
-        console.log('Sending to server for execution');
+        console.log('Sending to server for execution (ExecutionManager not available)');
         const roomId = window.currentRoom || 'solo-' + Date.now();
 
-        // Set flag to track if server responded
         window.executionId = Date.now();
         const currentExecutionId = window.executionId;
 
@@ -2694,7 +2748,7 @@ function executeCode() {
             return;
         }
 
-        // Fallback after 15 seconds if no server response (longer for server-hosted sites)
+        // Fallback after 15 seconds if no server response
         setTimeout(() => {
             if (window.executionId === currentExecutionId) {
                 console.log('No server response, running locally');
@@ -2703,7 +2757,6 @@ function executeCode() {
             }
         }, 15000);
 
-        // Show HTML preview immediately for better UX and reset button
         if (language === 'html') {
             resetRunButton();
             showPreview(code);
@@ -2711,8 +2764,8 @@ function executeCode() {
         return;
     }
 
-    // Fallback to local execution
-    console.log('Running locally (server not connected)');
+    // Final fallback to local execution
+    console.log('Running locally (no server, no ExecutionManager)');
     resetRunButton();
     runCodeLocally(code, language);
 
@@ -2720,6 +2773,7 @@ function executeCode() {
         showPreview(code);
     }
 }
+
 
 function saveCode() {
     if (!window.currentUser) {
@@ -3665,14 +3719,13 @@ function displayOutputInTerminal(output, error, complexity, exitCode) {
         term.writeln(`\x1b[32mPress ENTER to exit console.\x1b[0m`);
     }
 
-    // Always display complexity analysis for backend languages
-    if (['python', 'java', 'c', 'cpp'].includes(language)) {
-        const analysisComplexity = complexity || getLocalComplexity(editor ? editor.getValue() : '', language);
-
+    // Only display complexity analysis if explicitly provided (for remote execution)
+    // Local execution passes null to hide complexity
+    if (complexity && ['python', 'java', 'c', 'cpp'].includes(language)) {
         term.writeln('');
         term.writeln('\x1b[33m📊 Complexity Analysis:\x1b[0m');
-        term.writeln(`\x1b[33m⏱️ Time Complexity: ${analysisComplexity.time}\x1b[0m`);
-        term.writeln(`\x1b[33m💾 Space Complexity: ${analysisComplexity.space}\x1b[0m`);
+        term.writeln(`\x1b[33m⏱️ Time Complexity: ${complexity.time}\x1b[0m`);
+        term.writeln(`\x1b[33m💾 Space Complexity: ${complexity.space}\x1b[0m`);
         term.writeln('');
     }
 

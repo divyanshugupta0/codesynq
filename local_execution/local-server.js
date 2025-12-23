@@ -16,6 +16,8 @@ const CONFIG = {
     PORT: process.env.LOCAL_EXEC_PORT || 3001,
     HOST: '127.0.0.1', // Only listen on localhost for security
     TEMP_DIR: path.join(os.tmpdir(), 'codesynq_local'),
+    HISTORY_FILE: path.join(os.homedir(), '.codesynq', 'execution_history.json'),
+    MAX_HISTORY: 100, // Keep last 100 executions
     MAX_EXECUTION_TIME: 30000, // 30 seconds timeout
     ALLOWED_ORIGINS: [
         'http://localhost:3000',
@@ -25,20 +27,58 @@ const CONFIG = {
     ]
 };
 
-// Ensure temp directory exists
+// Ensure directories exist
 if (!fs.existsSync(CONFIG.TEMP_DIR)) {
     fs.mkdirSync(CONFIG.TEMP_DIR, { recursive: true });
+}
+const historyDir = path.dirname(CONFIG.HISTORY_FILE);
+if (!fs.existsSync(historyDir)) {
+    fs.mkdirSync(historyDir, { recursive: true });
 }
 
 // Running processes map
 const runningProcesses = new Map();
+
+// Execution history functions
+function loadHistory() {
+    try {
+        if (fs.existsSync(CONFIG.HISTORY_FILE)) {
+            return JSON.parse(fs.readFileSync(CONFIG.HISTORY_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading history:', e.message);
+    }
+    return [];
+}
+
+function saveHistory(history) {
+    try {
+        fs.writeFileSync(CONFIG.HISTORY_FILE, JSON.stringify(history, null, 2));
+    } catch (e) {
+        console.error('Error saving history:', e.message);
+    }
+}
+
+function addToHistory(entry) {
+    const history = loadHistory();
+    history.unshift(entry); // Add to beginning
+    // Keep only last MAX_HISTORY entries
+    if (history.length > CONFIG.MAX_HISTORY) {
+        history.length = CONFIG.MAX_HISTORY;
+    }
+    saveHistory(history);
+}
+
+function clearHistory() {
+    saveHistory([]);
+}
 
 // CORS headers for browser access
 function setCorsHeaders(res, origin) {
     // Allow specific origins or all for local development
     const allowedOrigin = CONFIG.ALLOWED_ORIGINS.includes(origin) ? origin : CONFIG.ALLOWED_ORIGINS[0];
     res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins for local service
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-ID');
     res.setHeader('Access-Control-Max-Age', '86400');
 }
@@ -521,6 +561,24 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // History endpoint - GET to retrieve, DELETE to clear
+    if (pathname === '/history') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                history: loadHistory(),
+                count: loadHistory().length
+            }));
+            return;
+        }
+        if (req.method === 'DELETE') {
+            clearHistory();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ cleared: true }));
+            return;
+        }
+    }
+
     // Execute code endpoint
     if (pathname === '/execute' && req.method === 'POST') {
         let body = '';
@@ -541,6 +599,7 @@ const server = http.createServer(async (req, res) => {
 
                 const id = clientId || crypto.randomBytes(8).toString('hex');
                 const outputs = [];
+                const startTime = Date.now();
 
                 const sendOutput = (data) => {
                     outputs.push(data);
@@ -576,11 +635,28 @@ const server = http.createServer(async (req, res) => {
                         return;
                 }
 
+                const duration = Date.now() - startTime;
+
+                // Save to history
+                addToHistory({
+                    id: id,
+                    timestamp: new Date().toISOString(),
+                    language: language.toLowerCase(),
+                    codeSnippet: code.substring(0, 200) + (code.length > 200 ? '...' : ''),
+                    codeLength: code.length,
+                    success: result.success,
+                    exitCode: result.exitCode,
+                    output: (result.output || '').substring(0, 500),
+                    error: (result.error || '').substring(0, 500),
+                    duration: duration
+                });
+
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     ...result,
                     clientId: id,
-                    streamOutput: outputs
+                    streamOutput: outputs,
+                    duration: duration
                 }));
 
             } catch (error) {
