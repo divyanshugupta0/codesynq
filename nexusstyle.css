@@ -3713,9 +3713,17 @@ body {
 }
 
 .status-left,
+.status-center,
 .status-right {
     display: flex;
+    align-items: center;
     gap: 15px;
+}
+
+.status-center {
+    flex: 1;
+    justify-content: center;
+    gap: 8px;
 }
 
 .status-item {
@@ -4072,17 +4080,25 @@ body {
     background: var(--primary-color);
 }
 
-/* Footer Server Status */
+/* Footer Server Status - High contrast colors for all themes */
 #serverStatus.connected {
-    color: #4caf50;
+    color: #ffffff;
+    text-shadow: 0 0 3px rgba(76, 175, 80, 0.6);
 }
 
 #serverStatus.disconnected {
-    color: #f44336;
+    color: #ffcccc;
+    text-shadow: 0 0 3px rgba(244, 67, 54, 0.6);
 }
 
 #serverStatus.connecting {
-    color: #ffeb3b;
+    color: #ffffcc;
+    text-shadow: 0 0 3px rgba(255, 235, 59, 0.6);
+}
+
+#serverStatus.offline {
+    color: #ffe0b2;
+    text-shadow: 0 0 3px rgba(255, 152, 0, 0.6);
 }
 
 /* Split Tab Bar Container */

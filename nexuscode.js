@@ -2692,6 +2692,11 @@ window.updateLocalStatusUI = function (isUp) {
         console.log(`[LocalNode] Server is now ${isUp ? 'ONLINE' : 'OFFLINE'}`);
         window.lastLocalStatus = isUp;
     }
+
+    // Refresh execution mode status in status bar
+    if (typeof window.updateStatusBarMode === 'function') {
+        window.updateStatusBarMode();
+    }
 };
 
 function executeCode() {
