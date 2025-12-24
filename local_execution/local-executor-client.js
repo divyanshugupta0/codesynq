@@ -1,220 +1,116 @@
 /**
- * CodeSynq Local Executor Client
- * This module provides the client-side interface for the local execution service.
- * It connects to the local server running on the user's device and handles code execution.
+ * CodeSynq Local Execution Client
+ * Handles NDJSON streaming from the local server.
  */
-
 class LocalExecutorClient {
-    constructor(options = {}) {
-        this.baseUrl = options.baseUrl || 'http://127.0.0.1:3001';
-        this.clientId = this.generateClientId();
-        this.isConnected = false;
-        this.connectionCheckInterval = null;
-        this.onStatusChange = options.onStatusChange || (() => { });
-        this.onOutput = options.onOutput || (() => { });
-        this.retryAttempts = 0;
-        this.maxRetries = 3;
-
-        // Start connection monitoring
-        this.startConnectionMonitor();
+    constructor(serverUrl = 'http://127.0.0.1:3001') {
+        this.serverUrl = serverUrl;
+        this.clientId = null;
+        this.onOutput = null; // Callback for streaming data
+        this.active = false;
     }
 
-    // Generate unique client ID
-    generateClientId() {
-        return 'client_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-    }
-
-    // Check if local service is running
-    async checkConnection() {
-        try {
-            const response = await fetch(`${this.baseUrl}/health`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(2000) // 2 second timeout
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                this.isConnected = true;
-                this.retryAttempts = 0;
-                this.onStatusChange({
-                    connected: true,
-                    status: 'online',
-                    serviceInfo: data
-                });
-                return { connected: true, info: data };
-            }
-        } catch (error) {
-            this.isConnected = false;
-            this.onStatusChange({
-                connected: false,
-                status: 'offline',
-                error: error.message
-            });
-        }
-        return { connected: false };
-    }
-
-    // Start monitoring connection
-    startConnectionMonitor() {
-        // Initial check
-        this.checkConnection();
-
-        // Check every 5 seconds
-        this.connectionCheckInterval = setInterval(() => {
-            this.checkConnection();
-        }, 5000);
-    }
-
-    // Stop monitoring
-    stopConnectionMonitor() {
-        if (this.connectionCheckInterval) {
-            clearInterval(this.connectionCheckInterval);
-            this.connectionCheckInterval = null;
-        }
-    }
-
-    // Execute code locally
     async execute(code, language) {
-        if (!this.isConnected) {
-            const check = await this.checkConnection();
-            if (!check.connected) {
-                return {
-                    success: false,
-                    error: 'Local execution service is not running. Please start the CodeSynq Local Service.',
-                    serviceNotRunning: true
-                };
-            }
-        }
+        this.active = true;
+        this.clientId = null;
 
         try {
-            const response = await fetch(`${this.baseUrl}/execute`, {
+            const response = await fetch(`${this.serverUrl}/execute`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Client-ID': this.clientId
-                },
-                body: JSON.stringify({
-                    code: code,
-                    language: language,
-                    clientId: this.clientId
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, language })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                return {
-                    success: false,
-                    error: errorData.error || 'Execution failed',
-                    exitCode: -1
-                };
+            if (!response.ok) throw new Error(`Server failed with status ${response.status}`);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finalResult = null;
+
+            while (this.active) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep partial line
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) continue;
+                    try {
+                        const message = JSON.parse(trimmedLine);
+
+                        // Internal message routing
+                        if (message.type === 'start') {
+                            this.clientId = message.clientId;
+                            console.log('[Local] Started with ID:', this.clientId);
+                        } else if (message.type === 'output') {
+                            if (this.onOutput) this.onOutput(message.data);
+                        } else if (message.type === 'result' || (typeof message.success !== 'undefined')) {
+                            // Support result chunk even if type property is missing (older server fallback)
+                            finalResult = message;
+                        }
+                    } catch (e) {
+                        console.warn('[Local] NDJSON Parse Warning:', trimmedLine, e);
+                    }
+                }
             }
 
-            const result = await response.json();
-
-            // Process stream output
-            if (result.streamOutput && result.streamOutput.length > 0) {
-                result.streamOutput.forEach(item => {
-                    this.onOutput(item);
-                });
+            // Important: Process any remaining data in the buffer after the stream ends
+            const finalBuffer = buffer.trim();
+            if (finalBuffer) {
+                try {
+                    const message = JSON.parse(finalBuffer);
+                    if (message.type === 'result' || (typeof message.success !== 'undefined')) {
+                        finalResult = message;
+                    } else if (message.type === 'output' && this.onOutput) {
+                        this.onOutput(message.data);
+                    }
+                } catch (e) {
+                    console.warn('[Local] Final buffer parse failed:', finalBuffer);
+                }
             }
 
-            return result;
+            this.active = false;
+            if (finalResult) return finalResult;
 
-        } catch (error) {
-            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                return {
-                    success: false,
-                    error: 'Cannot connect to local execution service. Please make sure the service is running.',
-                    serviceNotRunning: true
-                };
-            }
+            console.error('[Local] Stream ended without receiving a result chunk.');
             return {
                 success: false,
-                error: error.message,
-                exitCode: -1
+                error: 'The local engine disconnected before reporting the final result. Please ensure your local service is updated and running.'
             };
-        }
-    }
-
-    // Stop currently running process
-    async stop() {
-        if (!this.isConnected) {
-            return { stopped: false, error: 'Service not connected' };
-        }
-
-        try {
-            const response = await fetch(`${this.baseUrl}/stop`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Client-ID': this.clientId
-                },
-                body: JSON.stringify({
-                    clientId: this.clientId
-                })
-            });
-
-            return await response.json();
 
         } catch (error) {
-            return { stopped: false, error: error.message };
+            this.active = false;
+            console.error('[Local] Execution failed:', error);
+            return { success: false, error: `Connection failed: ${error.message}` };
         }
     }
 
-    // Send input to running process
     async sendInput(input) {
-        if (!this.isConnected) {
-            return { sent: false, error: 'Service not connected' };
-        }
+        if (!this.clientId) return { success: false, error: 'No active session' };
 
         try {
-            const response = await fetch(`${this.baseUrl}/input`, {
+            const response = await fetch(`${this.serverUrl}/input`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Client-ID': this.clientId
-                },
-                body: JSON.stringify({
-                    clientId: this.clientId,
-                    input: input
-                })
-            });
-
-            return await response.json();
-
-        } catch (error) {
-            return { sent: false, error: error.message };
-        }
-    }
-
-    // Get service status
-    async getStatus() {
-        try {
-            const response = await fetch(`${this.baseUrl}/status`, {
-                method: 'GET',
                 headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(2000)
+                body: JSON.stringify({ clientId: this.clientId, input })
             });
-
-            if (response.ok) {
-                return await response.json();
-            }
-        } catch (error) {
-            return { online: false, error: error.message };
+            return await response.json();
+        } catch (e) {
+            console.error('[Local] Input failed:', e);
+            return { success: false, error: e.message };
         }
-        return { online: false };
     }
 
-    // Cleanup
-    destroy() {
-        this.stopConnectionMonitor();
+    stop() {
+        this.active = false;
+        this.clientId = null;
     }
 }
 
-// Export for browser and Node.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { LocalExecutorClient };
-} else if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined') {
     window.LocalExecutorClient = LocalExecutorClient;
 }

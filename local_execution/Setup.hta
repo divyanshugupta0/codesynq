@@ -283,17 +283,59 @@
         }
         
         function checkInstalledLanguages() {
-            var r = runCommand("where node 2>nul");
-            if (r.output.indexOf("node") >= 0) { installedLanguages.node = true; document.getElementById('lang-js').className = 'language-item installed required'; }
+            // Node.js
+            var r = runCommand("node -v 2>nul");
+            if (r.output.indexOf("v") >= 0) { 
+                installedLanguages.node = true; 
+                document.getElementById('lang-js').className = 'language-item installed required'; 
+            }
+            
+            // Python
             r = runCommand("python --version 2>&1");
-            if (r.output.indexOf("Python") >= 0) { installedLanguages.python = true; document.getElementById('python-version').innerText = r.output.replace(/[\r\n]/g,''); document.getElementById('python-status').innerText = 'Installed'; document.getElementById('python-status').className = 'language-status status-installed'; document.getElementById('lang-python').className = 'language-item installed'; }
-            else { document.getElementById('python-version').innerText = 'Not installed'; }
+            if (r.output.indexOf("Python") >= 0) { 
+                installedLanguages.python = true; 
+                var v = r.output.replace(/[\r\n]/g,'');
+                document.getElementById('python-version').innerText = v; 
+                document.getElementById('python-status').innerText = 'Installed'; 
+                document.getElementById('python-status').className = 'language-status status-installed'; 
+                document.getElementById('lang-python').className = 'language-item installed'; 
+            } else {
+                // Try 'py' command
+                r = runCommand("py --version 2>&1");
+                if (r.output.indexOf("Python") >= 0) {
+                    installedLanguages.python = true;
+                    document.getElementById('python-version').innerText = 'Installed (via py)';
+                    document.getElementById('python-status').innerText = 'Installed';
+                    document.getElementById('python-status').className = 'language-status status-installed';
+                    document.getElementById('lang-python').className = 'language-item installed';
+                } else {
+                    document.getElementById('python-version').innerText = 'Not installed';
+                }
+            }
+            
+            // Java
             r = runCommand("java -version 2>&1");
-            if (r.output.toLowerCase().indexOf("version") >= 0) { installedLanguages.java = true; document.getElementById('java-version').innerText = 'Installed'; document.getElementById('java-status').innerText = 'Installed'; document.getElementById('java-status').className = 'language-status status-installed'; document.getElementById('lang-java').className = 'language-item installed'; }
-            else { document.getElementById('java-version').innerText = 'Not installed'; }
+            if (r.output.toLowerCase().indexOf("version") >= 0 || r.output.toLowerCase().indexOf("runtime") >= 0) { 
+                installedLanguages.java = true; 
+                document.getElementById('java-version').innerText = 'Installed'; 
+                document.getElementById('java-status').innerText = 'Installed'; 
+                document.getElementById('java-status').className = 'language-status status-installed'; 
+                document.getElementById('lang-java').className = 'language-item installed'; 
+            } else { 
+                document.getElementById('java-version').innerText = 'Not installed'; 
+            }
+            
+            // C++ (GCC)
             r = runCommand("gcc --version 2>&1");
-            if (r.output.toLowerCase().indexOf("gcc") >= 0) { installedLanguages.cpp = true; document.getElementById('cpp-version').innerText = 'Installed'; document.getElementById('cpp-status').innerText = 'Installed'; document.getElementById('cpp-status').className = 'language-status status-installed'; document.getElementById('lang-cpp').className = 'language-item installed'; }
-            else { document.getElementById('cpp-version').innerText = 'Not installed'; }
+            if (r.output.toLowerCase().indexOf("gcc") >= 0 || r.output.toLowerCase().indexOf("copyright") >= 0) { 
+                installedLanguages.cpp = true; 
+                document.getElementById('cpp-version').innerText = 'Installed'; 
+                document.getElementById('cpp-status').innerText = 'Installed'; 
+                document.getElementById('cpp-status').className = 'language-status status-installed'; 
+                document.getElementById('lang-cpp').className = 'language-item installed'; 
+            } else { 
+                document.getElementById('cpp-version').innerText = 'Not installed'; 
+            }
         }
         
         function toggleLanguage(lang) {
@@ -302,18 +344,41 @@
             document.getElementById('lang-' + lang).className = selectedLanguages[lang] ? 'language-item selected' : 'language-item';
         }
         
-        function addLog(msg, type) { var el = document.getElementById('log-output'); var d = document.createElement('div'); d.className = 'log-line ' + (type || ''); d.innerText = msg; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+        function addLog(msg, type) { 
+            var el = document.getElementById('log-output'); 
+            var d = document.createElement('div'); 
+            d.className = 'log-line ' + (type || ''); 
+            d.innerText = "[" + new Date().toLocaleTimeString() + "] " + msg; 
+            el.appendChild(d); 
+            el.scrollTop = el.scrollHeight; 
+        }
+        
         function updateProgress(p) { document.getElementById('progress-bar').style.width = p + '%'; }
+        
         function addProgressStep(id, txt, status) {
             var c = document.getElementById('progress-steps'), e = document.getElementById('step-' + id);
             var icons = { pending: 'O', running: '*', completed: '\u2713', error: 'X' };
-            if (e) { e.className = 'progress-step ' + status; e.getElementsByTagName('span')[0].innerText = icons[status]; }
-            else { var s = document.createElement('div'); s.id = 'step-' + id; s.className = 'progress-step ' + status; s.innerHTML = '<span class="step-icon">' + icons[status] + '</span> ' + txt; c.appendChild(s); }
+            if (e) { 
+                e.className = 'progress-step ' + status; 
+                e.getElementsByTagName('span')[0].innerText = icons[status]; 
+            } else { 
+                var s = document.createElement('div'); 
+                s.id = 'step-' + id; 
+                s.className = 'progress-step ' + status; 
+                s.innerHTML = '<span class="step-icon">' + icons[status] + '</span> ' + txt; 
+                c.appendChild(s); 
+            }
         }
-        function getScriptDir() { var p = unescape(document.location.pathname); if (p.charAt(0) === '/') p = p.substr(1); return p.replace(/\//g, '\\').substr(0, p.replace(/\//g, '\\').lastIndexOf('\\') + 1); }
+        
+        function getScriptDir() { 
+            var p = unescape(document.location.pathname); 
+            if (p.charAt(0) === '/') p = p.substr(1); 
+            return p.replace(/\//g, '\\').substr(0, p.replace(/\//g, '\\').lastIndexOf('\\') + 1); 
+        }
         
         function startInstallation() {
-            showScreen('screen-progress'); document.getElementById('progress-title').innerText = 'Installing Engine...';
+            showScreen('screen-progress'); 
+            document.getElementById('progress-title').innerText = 'Installing Engine...';
             var steps = [{ id: 'node', text: 'Checking Node.js...', action: installNode }];
             if (selectedLanguages.python && !installedLanguages.python) steps.push({ id: 'python', text: 'Installing Python...', action: installPython });
             if (selectedLanguages.java && !installedLanguages.java) steps.push({ id: 'java', text: 'Installing Java...', action: installJava });
@@ -325,91 +390,147 @@
         }
         
         function runSteps(steps, i) {
-            if (i >= steps.length) { showSuccessScreen(); return; }
+            if (i >= steps.length) { 
+                window.setTimeout(function() { showSuccessScreen(); }, 500);
+                return; 
+            }
             var s = steps[i], p = Math.round(((i + 1) / steps.length) * 100);
-            addProgressStep(s.id, s.text, 'running'); addLog('> ' + s.text, 'info'); updateProgress(p - 10);
+            addProgressStep(s.id, s.text, 'running'); 
+            addLog(s.text, 'info'); 
+            updateProgress(p - 5);
             window.setTimeout(function() {
                 var r = s.action();
                 addProgressStep(s.id, s.text.replace('...', ''), r.success ? 'completed' : 'error');
-                addLog('  ' + r.message, r.success ? 'success' : 'error');
+                addLog(r.message, r.success ? 'success' : 'error');
                 updateProgress(p);
-                window.setTimeout(function() { runSteps(steps, i + 1); }, 250);
-            }, 400);
+                window.setTimeout(function() { runSteps(steps, i + 1); }, 300);
+            }, 500);
         }
         
-        function installNode() { if (installedLanguages.node) return { success: true, message: 'Node.js already installed' }; addLog('  Downloading Node.js...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.10.0/node-v20.10.0-x64.msi' -OutFile '%TEMP%\\node_installer.msi'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\node_installer.msi"; if (fso.FileExists(t)) { runCommand("msiexec /i \"" + t + "\" /qn /norestart"); installedLanguages.node = true; return { success: true, message: 'Node.js installed' }; } return { success: false, message: 'Download failed' }; }
-        function installPython() { addLog('  Downloading Python...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe' -OutFile '%TEMP%\\python_installer.exe'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\python_installer.exe"; if (fso.FileExists(t)) { runCommand("\"" + t + "\" /quiet InstallAllUsers=1 PrependPath=1"); installedLanguages.python = true; return { success: true, message: 'Python installed' }; } return { success: false, message: 'Download failed' }; }
-        function installJava() { addLog('  Downloading Java...', ''); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://download.java.net/java/GA/jdk21.0.1/415e3f918a1f4062a0074a2794853d0d/12/GPL/openjdk-21.0.1_windows-x64_bin.zip' -OutFile '%TEMP%\\openjdk.zip'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\openjdk.zip"; if (fso.FileExists(t)) { runCommand("powershell -Command \"Expand-Archive -Path '" + t + "' -DestinationPath 'C:\\Program Files\\Java' -Force\""); installedLanguages.java = true; return { success: true, message: 'Java installed' }; } return { success: false, message: 'Download failed' }; }
-        function installFiles() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", c = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq"; if (!fso.FolderExists(c)) fso.CreateFolder(c); if (!fso.FolderExists(d)) fso.CreateFolder(d); runCommand("xcopy /Y /E /I \"" + getScriptDir() + "*.*\" \"" + d + "\\\""); return { success: true, message: 'Files installed' }; }
-        function addToStartup() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", s = d + "\\start-silent.vbs"; var f = fso.CreateTextFile(s, true); f.Write("Set WshShell = CreateObject(\"WScript.Shell\")\r\nWshShell.Run chr(34) & \"" + d + "\\start-service.bat\" & chr(34), 0\r\nSet WshShell = Nothing"); f.Close(); runCommand("reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /t REG_SZ /d \"\\\"" + s + "\\\"\" /f"); return { success: true, message: 'Startup configured' }; }
+        function installNode() { if (installedLanguages.node) return { success: true, message: 'Node.js is ready' }; addLog('Downloading Node.js (this may take a minute)...', 'info'); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.10.0/node-v20.10.0-x64.msi' -OutFile '%TEMP%\\node_installer.msi'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\node_installer.msi"; if (fso.FileExists(t)) { addLog('Running installer...', 'info'); runCommand("msiexec /i \"" + t + "\" /qn /norestart"); installedLanguages.node = true; return { success: true, message: 'Node.js installed successfully' }; } return { success: false, message: 'Node.js download failed' }; }
+        function installPython() { addLog('Downloading Python...', 'info'); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe' -OutFile '%TEMP%\\python_installer.exe'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\python_installer.exe"; if (fso.FileExists(t)) { addLog('Installing Python quietly...', 'info'); runCommand("\"" + t + "\" /quiet InstallAllUsers=1 PrependPath=1"); installedLanguages.python = true; return { success: true, message: 'Python installed successfully' }; } return { success: false, message: 'Python download failed' }; }
+        function installJava() { addLog('Downloading OpenJDK...', 'info'); runCommand("powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://download.java.net/java/GA/jdk21.0.1/415e3f918a1f4062a0074a2794853d0d/12/GPL/openjdk-21.0.1_windows-x64_bin.zip' -OutFile '%TEMP%\\openjdk.zip'\""); var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\openjdk.zip"; if (fso.FileExists(t)) { addLog('Extracting Java to Program Files...', 'info'); if (!fso.FolderExists("C:\\Program Files\\Java")) fso.CreateFolder("C:\\Program Files\\Java"); runCommand("powershell -Command \"Expand-Archive -Path '" + t + "' -DestinationPath 'C:\\Program Files\\Java' -Force\""); installedLanguages.java = true; return { success: true, message: 'Java installed successfully' }; } return { success: false, message: 'Java download failed' }; }
+        function installFiles() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", c = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq"; if (!fso.FolderExists(c)) fso.CreateFolder(c); if (!fso.FolderExists(d)) fso.CreateFolder(d); addLog('Copying files to app data...', 'info'); runCommand("xcopy /Y /E /I \"" + getScriptDir() + "*.*\" \"" + d + "\\\""); return { success: true, message: 'Engine files installed' }; }
+        function addToStartup() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution", s = d + "\\start-silent.vbs"; var f = fso.CreateTextFile(s, true); f.Write("Set WshShell = CreateObject(\"WScript.Shell\")\r\nWshShell.Run chr(34) & \"" + d + "\\start-service.bat\" & chr(34), 0\r\nSet WshShell = Nothing"); f.Close(); runCommand("reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /t REG_SZ /d \"\\\"" + s + "\\\"\" /f"); return { success: true, message: 'Windows startup registered' }; }
         function createShortcut() { 
             var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; 
             try { 
                 var desktop = shell.SpecialFolders("Desktop"); 
                 var sysRoot = shell.ExpandEnvironmentStrings("%SystemRoot%");
+                
                 // Service Manager shortcut
                 var sc1 = shell.CreateShortcut(desktop + "\\CodeSynq Service Manager.lnk"); 
                 sc1.TargetPath = "mshta.exe"; 
                 sc1.Arguments = "\"" + d + "\\Setup.hta\""; 
                 sc1.WorkingDirectory = d; 
-                sc1.IconLocation = sysRoot + "\\System32\\shell32.dll,21"; // Settings icon
+                if (fso.FileExists(d + "\\codesynq.ico")) sc1.IconLocation = d + "\\codesynq.ico";
+                else sc1.IconLocation = sysRoot + "\\System32\\shell32.dll,21"; 
                 sc1.Description = "Manage CodeSynq Local Execution Service"; 
                 sc1.Save(); 
+                
                 // Execution Panel shortcut
                 var sc2 = shell.CreateShortcut(desktop + "\\CodeSynq Execution Panel.lnk"); 
                 sc2.TargetPath = "mshta.exe"; 
                 sc2.Arguments = "\"" + d + "\\ExecutionPanel.hta\""; 
                 sc2.WorkingDirectory = d; 
-                sc2.IconLocation = sysRoot + "\\System32\\shell32.dll,144"; // Report/Document icon
+                if (fso.FileExists(d + "\\codesynq.ico")) sc2.IconLocation = d + "\\codesynq.ico";
+                else sc2.IconLocation = sysRoot + "\\System32\\shell32.dll,144"; 
                 sc2.Description = "View CodeSynq Execution History"; 
                 sc2.Save(); 
-                return { success: true, message: 'Desktop shortcuts created' }; 
-            } catch (e) { return { success: false, message: e.message }; } 
+                
+                return { success: true, message: 'Shortcuts created on desktop' }; 
+            } catch (e) { return { success: false, message: 'Shortcut error: ' + e.message }; } 
         }
-        function startService() { var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); try { shell.Run("wscript.exe \"" + d + "\\start-silent.vbs\"", 0, false); return { success: true, message: 'Service started on port 3001' }; } catch (e) { return { success: false, message: e.message }; } }
-        function showSuccessScreen() { showScreen('screen-success'); var h = '<p>' + (installedLanguages.node ? '\u2705' : '\u26AA') + ' JavaScript - ' + (installedLanguages.node ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.python ? '\u2705' : '\u26AA') + ' Python - ' + (installedLanguages.python ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.java ? '\u2705' : '\u26AA') + ' Java - ' + (installedLanguages.java ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.cpp ? '\u2705' : '\u26AA') + ' C/C++ - ' + (installedLanguages.cpp ? 'Ready' : 'N/A') + '</p>'; document.getElementById('final-language-status').innerHTML = h; }
+        function startService() { 
+            var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; 
+            addLog('Cleaning up old instances...', 'info');
+            runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); 
+            try { 
+                shell.Run("wscript.exe \"" + d + "\\start-silent.vbs\"", 0, false); 
+                return { success: true, message: 'Local engine is now running' }; 
+            } catch (e) { return { success: false, message: 'Start failed: ' + e.message }; } 
+        }
+        function showSuccessScreen() { 
+            showScreen('screen-success'); 
+            var h = '<p>' + (installedLanguages.node ? '\u2705' : '\u26AA') + ' JavaScript - ' + (installedLanguages.node ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.python ? '\u2705' : '\u26AA') + ' Python - ' + (installedLanguages.python ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.java ? '\u2705' : '\u26AA') + ' Java - ' + (installedLanguages.java ? 'Ready' : 'N/A') + '</p><p>' + (installedLanguages.cpp ? '\u2705' : '\u26AA') + ' C/C++ - ' + (installedLanguages.cpp ? 'Ready' : 'N/A') + '</p>'; 
+            document.getElementById('final-language-status').innerHTML = h; 
+        }
         
-        function startUninstallation() { showScreen('screen-progress'); document.getElementById('progress-title').innerText = 'Removing...'; document.getElementById('progress-steps').innerHTML = ''; document.getElementById('log-output').innerHTML = '<div class="log-line info">Starting removal...</div>'; var steps = [{ id: 'stop', text: 'Stopping service...', action: stopService }, { id: 'startup', text: 'Removing startup...', action: removeFromStartup }, { id: 'shortcut', text: 'Removing shortcut...', action: removeShortcut }, { id: 'files', text: 'Deleting files...', action: deleteFiles }, { id: 'temp', text: 'Cleaning up...', action: cleanupTemp }]; runUninstallSteps(steps, 0); }
-        function runUninstallSteps(steps, i) { if (i >= steps.length) { showScreen('screen-uninstall-success'); return; } var s = steps[i], p = Math.round(((i + 1) / steps.length) * 100); addProgressStep(s.id, s.text, 'running'); addLog('> ' + s.text, 'info'); updateProgress(p - 10); window.setTimeout(function() { var r = s.action(); addProgressStep(s.id, s.text.replace('...', ''), r.success ? 'completed' : 'error'); addLog('  ' + r.message, r.success ? 'success' : 'error'); updateProgress(p); window.setTimeout(function() { runUninstallSteps(steps, i + 1); }, 250); }, 400); }
-        function stopService() { runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); return { success: true, message: 'Service stopped' }; }
-        function removeFromStartup() { runCommand("reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /f"); return { success: true, message: 'Startup entry removed' }; }
+        function startUninstallation() { 
+            showScreen('screen-progress'); 
+            document.getElementById('progress-title').innerText = 'Removing Engine...'; 
+            document.getElementById('progress-steps').innerHTML = ''; 
+            document.getElementById('log-output').innerHTML = '<div class="log-line info">Starting removal...</div>'; 
+            var steps = [
+                { id: 'stop', text: 'Stopping service...', action: stopService }, 
+                { id: 'startup', text: 'Removing startup entry...', action: removeFromStartup }, 
+                { id: 'shortcut', text: 'Cleaning desktop shortcuts...', action: removeShortcut }, 
+                { id: 'files', text: 'Deleting local files...', action: deleteFiles }, 
+                { id: 'temp', text: 'Cleaning temp data...', action: cleanupTemp }
+            ]; 
+            runUninstallSteps(steps, 0); 
+        }
+        function runUninstallSteps(steps, i) { 
+            if (i >= steps.length) { 
+                window.setTimeout(function() { showScreen('screen-uninstall-success'); }, 500);
+                return; 
+            } 
+            var s = steps[i], p = Math.round(((i + 1) / steps.length) * 100); 
+            addProgressStep(s.id, s.text, 'running'); 
+            addLog(s.text, 'info'); 
+            updateProgress(p - 5); 
+            window.setTimeout(function() { 
+                var r = s.action(); 
+                addProgressStep(s.id, s.text.replace('...', ''), r.success ? 'completed' : 'error'); 
+                addLog(r.message, r.success ? 'success' : 'error'); 
+                updateProgress(p); 
+                window.setTimeout(function() { runUninstallSteps(steps, i + 1); }, 300); 
+            }, 500); 
+        }
+        function stopService() { 
+            runCommand("for /f \"tokens=5\" %a in ('netstat -aon 2^>nul ^| findstr \":3001\" ^| findstr \"LISTENING\"') do taskkill /PID %a /F"); 
+            return { success: true, message: 'Service stopped' }; 
+        }
+        function removeFromStartup() { 
+            runCommand("reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CodeSynqLocal\" /f"); 
+            return { success: true, message: 'Startup disabled' }; 
+        }
         function removeShortcut() { 
             try {
                 var desktop = shell.SpecialFolders("Desktop"); 
                 var p1 = desktop + "\\CodeSynq Service Manager.lnk"; 
                 var p2 = desktop + "\\CodeSynq Execution Panel.lnk"; 
                 var p3 = desktop + "\\CodeSynq Local Service.lnk"; 
-                try { if (fso.FileExists(p1)) fso.DeleteFile(p1); } catch(e) {}
-                try { if (fso.FileExists(p2)) fso.DeleteFile(p2); } catch(e) {}
-                try { if (fso.FileExists(p3)) fso.DeleteFile(p3); } catch(e) {}
+                if (fso.FileExists(p1)) fso.DeleteFile(p1); 
+                if (fso.FileExists(p2)) fso.DeleteFile(p2); 
+                if (fso.FileExists(p3)) fso.DeleteFile(p3); 
             } catch(e) {}
             return { success: true, message: 'Shortcuts removed' }; 
         }
         function deleteFiles() { 
             var d = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq\\LocalExecution"; 
             var c = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\CodeSynq"; 
-            var deleted = false;
             try {
-                // Try to delete individual files first (less likely to fail)
                 if (fso.FolderExists(d)) {
-                    var files = new Enumerator(fso.GetFolder(d).Files);
-                    for (; !files.atEnd(); files.moveNext()) {
-                        try { fso.DeleteFile(files.item().Path, true); } catch(e) {}
-                    }
-                    // Try to delete subfolders
-                    var folders = new Enumerator(fso.GetFolder(d).SubFolders);
-                    for (; !folders.atEnd(); folders.moveNext()) {
-                        try { fso.DeleteFolder(folders.item().Path, true); } catch(e) {}
-                    }
-                    // Try to delete the folder itself
-                    try { fso.DeleteFolder(d, true); deleted = true; } catch(e) {}
+                    runCommand("rd /s /q \"" + d + "\"");
                 }
-                // Try to delete parent folder if empty
-                try { if (fso.FolderExists(c)) fso.DeleteFolder(c, true); } catch(e) {}
+                if (fso.FolderExists(c)) {
+                    // Only delete parent if it's empty or we really want to purge
+                    var folder = fso.GetFolder(c);
+                    if (folder.SubFolders.Count === 0 && folder.Files.Count === 0) {
+                        fso.DeleteFolder(c, true);
+                    }
+                }
             } catch(e) {}
-            return { success: true, message: deleted ? 'Files deleted' : 'Files marked for deletion (may need manual cleanup)' }; 
+            return { success: true, message: 'Engine files removed' }; 
         }
-        function cleanupTemp() { var t = shell.ExpandEnvironmentStrings("%TEMP%") + "\\codesynq_local"; if (fso.FolderExists(t)) fso.DeleteFolder(t, true); return { success: true, message: 'Cleanup complete' }; }
+        function cleanupTemp() { 
+            var t = path.join(os.tmpdir(), 'codesynq_local_v2'); // Match local-server.js
+            try {
+                if (fso.FolderExists(t)) runCommand("rd /s /q \"" + t + "\""); 
+            } catch(e) {}
+            return { success: true, message: 'Cleanup complete' }; 
+        }
     </script>
 </body>
 </html>

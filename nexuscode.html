@@ -278,7 +278,7 @@
                                         Mode:
                                     </label>
                                     <select id="executionModeSelect" style="flex: 1; margin-left: 8px;">
-                                        <option value="auto">Auto (Local if available)</option>
+                                        <option value="auto">Auto (Detect)</option>
                                         <option value="local">Local Only</option>
                                         <option value="remote">Remote Only</option>
                                     </select>
@@ -289,14 +289,18 @@
                                         style="width: 8px; height: 8px; border-radius: 50%; background: #f14c4c;"></span>
                                     <span id="localServiceText">Local Service: Checking...</span>
                                 </div>
-                                <div id="setupLocalServiceBtn" class="setting-item"
-                                    style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 8px 0; transition: background 0.2s;"
-                                    onclick="if(window.executionManager) window.executionManager.showLocalServiceSetup();">
-                                    <i class="fas fa-download" style="color: #569cd6;"></i>
+                                <div id="setupLocalServiceBtn" class="setting-item setup-btn-hover"
+                                    style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; transition: all 0.2s; margin-top: 5px;"
+                                    onclick="console.log('Setup button clicked'); if(window.executionManager) window.executionManager.showLocalServiceSetup();"
+                                    onmousedown="this.style.transform='scale(0.98)'; this.style.background='rgba(86,156,214,0.1)'"
+                                    onmouseup="this.style.transform='scale(1)'; this.style.background='transparent'"
+                                    onmouseenter="this.style.background='rgba(255,255,255,0.05)'"
+                                    onmouseleave="this.style.background='transparent'">
+                                    <i class="fas fa-download" style="color: #569cd6; font-size: 16px;"></i>
                                     <div style="display: flex; flex-direction: column;">
-                                        <span style="font-weight: 500;">Setup Local Service</span>
-                                        <span style="font-size: 11px; color: var(--text-secondary);">Run code on your
-                                            device</span>
+                                        <span style="font-weight: 600; font-size: 13px;">Setup Local Service</span>
+                                        <span style="font-size: 10px; color: var(--text-secondary);">Unlock interactive
+                                            execution</span>
                                     </div>
                                 </div>
                             </div>
@@ -602,6 +606,97 @@
         </div>
     </div>
 
+    <!-- Local Service Setup Modal -->
+    <div id="localServiceSetupModal" class="modal" style="background: rgba(10, 20, 10, 0.95);">
+        <div class="modal-content"
+            style="max-width: 550px; background: #121f12; border: 1px solid #2a4d2a; padding: 2.5rem; border-radius: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.5);">
+
+            <!-- Header -->
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                <i class="fas fa-desktop" style="font-size: 32px; color: #4ade80;"></i>
+                <h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #4ade80; letter-spacing: -0.5px;">Setup
+                    Local Execution</h1>
+            </div>
+
+            <p style="color: #a7f3d0; opacity: 0.9; line-height: 1.5; font-size: 18px; margin-bottom: 25px;">
+                Run code on your own device for faster execution and privacy. <span
+                    style="font-weight: 700; color: #fff;">One-click setup - no manual steps needed!</span>
+            </p>
+
+            <!-- Blue "One-Click Auto Setup" Card -->
+            <div
+                style="background: #2b5278; border-radius: 16px; padding: 25px; margin-bottom: 20px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                    <i class="fas fa-bolt" style="color: #4ade80; font-size: 24px; transform: rotate(15deg);"></i>
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 20px; font-weight: 700; color: #fff;">One-Click Auto Setup</span>
+                        <span style="font-size: 13px; color: #bfdbfe; opacity: 0.8;">Everything is automatic - just
+                            download and run!</span>
+                    </div>
+                </div>
+                <div style="color: #eff6ff; font-size: 16px; line-height: 1.8;">
+                    <div style="margin-bottom: 8px;">1. Click <span style="color: #4ade80; font-weight: 700;">Download &
+                            Install</span> button below</div>
+                    <div style="margin-bottom: 8px;">2. Extract the ZIP and run <span
+                            style="color: #4ade80; font-weight: 700;">INSTALL.bat</span></div>
+                    <div>3. Done! Service starts automatically with Windows</div>
+                </div>
+            </div>
+
+            <!-- Green "What Gets Installed" Card -->
+            <div
+                style="background: #1a2e1a; border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid #2a4d2a;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; color: #4ade80;">
+                    <i class="fas fa-check-circle" style="font-size: 20px;"></i>
+                    <span style="font-size: 18px; font-weight: 700;">What Gets Installed</span>
+                </div>
+                <ul style="list-style: none; padding: 0; margin: 0; color: #a7f3d0; font-size: 14px; line-height: 2;">
+                    <li style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 6px; height: 6px; background: #4ade80; border-radius: 50%;"></span>
+                        Local execution server on port 3001
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 6px; height: 6px; background: #4ade80; border-radius: 50%;"></span>
+                        Auto-starts with Windows (can be disabled)
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 6px; height: 6px; background: #4ade80; border-radius: 50%;"></span>
+                        Desktop shortcut for manual control
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 6px; height: 6px; background: #4ade80; border-radius: 50%;"></span>
+                        Node.js (if not already installed)
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Info Bar -->
+            <div
+                style="background: rgba(42, 77, 42, 0.3); border-radius: 12px; padding: 15px; display: flex; align-items: flex-start; gap: 12px; margin-bottom: 30px;">
+                <i class="fas fa-info-circle" style="color: #3b82f6; font-size: 18px; margin-top: 2px;"></i>
+                <p style="margin: 0; font-size: 13px; color: #a7f3d0; line-height: 1.4;">
+                    Supports: Python, JavaScript, Java, C, C++ (compilers must be installed separately)
+                </p>
+            </div>
+
+            <!-- Footer Actions -->
+            <div style="display: flex; justify-content: flex-end; gap: 15px;">
+                <button onclick="document.getElementById('localServiceSetupModal').style.display='none'"
+                    style="background: transparent; border: 1px solid #2a4d2a; color: #a7f3d0; padding: 12px 25px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px; transition: all 0.2s;"
+                    onmouseenter="this.style.background='rgba(42, 77, 42, 0.2)'"
+                    onmouseleave="this.style.background='transparent'">
+                    Cancel
+                </button>
+                <a href="/local_execution/CodeSynq-LocalExecution.zip" class="download-install-btn"
+                    style="background: linear-gradient(135deg, #0088cc 0%, #00cba9 100%); color: #fff; padding: 12px 25px; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 16px; text-decoration: none; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 20px rgba(0, 203, 169, 0.3); transition: all 0.2s;"
+                    onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 30px rgba(0, 203, 169, 0.4)'"
+                    onmouseleave="this.style.transform='translateY(0)'; this.style.boxShadow='0 10px 20px rgba(0, 203, 169, 0.3)'">
+                    <i class="fas fa-download"></i> Download & Install
+                </a>
+            </div>
+        </div>
+    </div>
+
     <!-- Username Modal -->
     <div id="usernameModal" class="modal">
         <div class="modal-content">
@@ -730,7 +825,7 @@
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 
     <!-- App Scripts -->
-    <script src="nexuscode.js"></script>
+    <script src="nexuscode.js?v=20241224_2"></script>
     <script src="shared_functions.js"></script>
     <script src="profile-picture.js"></script>
     <script src="toggler.js"></script>
@@ -738,8 +833,8 @@
     <script src="nexusshare.js"></script>
 
     <!-- Local Execution Module -->
-    <script src="local_execution/local-executor-client.js"></script>
-    <script src="local_execution/execution-manager.js"></script>
+    <script src="local_execution/local-executor-client.js?v=20241224_2"></script>
+    <script src="local_execution/execution-manager.js?v=20241224_2"></script>
 
     <!-- Firebase Configuration -->
     <script>
@@ -1879,6 +1974,76 @@
         </div>
     </div>
     <script src="quickopen.js"></script>
+    <script>
+        // Handle execution mode change - save to Firebase and reload page
+        document.addEventListener('DOMContentLoaded', function () {
+            const executionModeSelect = document.getElementById('executionModeSelect');
+
+            if (executionModeSelect) {
+                // Load saved execution mode from Firebase or localStorage
+                function loadExecutionMode() {
+                    if (window.currentUser && typeof database !== 'undefined') {
+                        // Load from Firebase
+                        database.ref(`users/${window.currentUser.uid}/settings/executionMode`).once('value')
+                            .then(snapshot => {
+                                const savedMode = snapshot.val();
+                                if (savedMode && ['auto', 'local', 'remote'].includes(savedMode)) {
+                                    executionModeSelect.value = savedMode;
+                                    console.log('Loaded execution mode from Firebase:', savedMode);
+                                }
+                            })
+                            .catch(err => {
+                                console.log('Error loading from Firebase, using localStorage:', err);
+                                // Fallback to localStorage
+                                const localMode = localStorage.getItem('codesynq_execution_mode');
+                                if (localMode) {
+                                    executionModeSelect.value = localMode;
+                                }
+                            });
+                    } else {
+                        // Not logged in - use localStorage
+                        const savedMode = localStorage.getItem('codesynq_execution_mode');
+                        if (savedMode) {
+                            executionModeSelect.value = savedMode;
+                        }
+                    }
+                }
+
+                // Load on init
+                loadExecutionMode();
+
+                // Listen for changes and save + reload
+                executionModeSelect.addEventListener('change', function (e) {
+                    const newMode = e.target.value;
+                    console.log('Execution mode changed to:', newMode);
+
+                    // Save to Firebase if logged in
+                    if (window.currentUser && typeof database !== 'undefined') {
+                        database.ref(`users/${window.currentUser.uid}/settings/executionMode`).set(newMode)
+                            .then(() => {
+                                console.log('Saved execution mode to Firebase:', newMode);
+                            })
+                            .catch(err => {
+                                console.error('Error saving to Firebase:', err);
+                            });
+                    }
+
+                    // Always save to localStorage as fallback
+                    localStorage.setItem('codesynq_execution_mode', newMode);
+
+                    // Show notification and reload
+                    if (typeof showNotification === 'function') {
+                        showNotification('Switching to ' + newMode + ' mode. Reloading...', 'info');
+                    }
+
+                    // Reload page after brief delay
+                    setTimeout(function () {
+                        window.location.reload();
+                    }, 500);
+                });
+            }
+        });
+    </script>
 </body>
 
 </html>

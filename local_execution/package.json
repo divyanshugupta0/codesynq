@@ -1,29 +1,12 @@
 {
     "name": "codesynq-local-execution",
-    "version": "1.0.0",
-    "description": "CodeSynq Local Execution Service - Execute code on your local machine",
+    "version": "1.1.0",
+    "description": "Local code execution service for CodeSynq",
     "main": "local-server.js",
     "scripts": {
-        "start": "node local-server.js",
-        "dev": "node local-server.js",
-        "install-service": "node install-windows-service.js install",
-        "uninstall-service": "node install-windows-service.js uninstall"
+        "start": "node local-server.js"
     },
     "author": "CodeSynq",
     "license": "MIT",
-    "engines": {
-        "node": ">=14.0.0"
-    },
-    "keywords": [
-        "code-execution",
-        "local-server",
-        "code-runner",
-        "codesynq"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/codesynq/local-execution"
-    },
-    "dependencies": {},
-    "devDependencies": {}
+    "dependencies": {}
 }

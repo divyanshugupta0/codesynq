@@ -10,7 +10,9 @@ let currentSavedFile = null; // {key: string, name: string}
 let hasUnsavedChanges = false;
 let isTabMode = true;
 var editorTabs = [];
+var editorTabs = [];
 var activeTabIndex = 0;
+let activeExecutionMode = null; // 'local' or 'remote'
 
 // Auto-save functionality
 function saveEditorState() {
@@ -388,7 +390,9 @@ function tryServerConnection() {
                         displayConsoleOutput('Code executed successfully', 'success');
                     }
                 } else {
-                    displayOutputInTerminal(data.output, data.error, data.complexity, data.exitCode);
+                    // For remote execution, output is streamed via 'terminal-output'
+                    // So we pass null for output to prevent duplication, but pass everything else
+                    displayOutputInTerminal(null, data.error, data.complexity, data.exitCode);
                 }
                 // Handle HTML preview
                 if (data.htmlContent) {
@@ -399,13 +403,22 @@ function tryServerConnection() {
             window.socket.on('terminal-output', function (data) {
                 // Clear execution flag since server is responding
                 window.executionId = null;
-                // Reset button on first output
                 resetRunButton();
-                displayRealTimeOutput(data.text, data.type);
+
+                if (data.type === 'stdout') {
+                    // Convert newlines to CRLF for xterm
+                    const text = (data.text || '').replace(/\n/g, '\r\n');
+                    if (term) term.write(text);
+                } else if (data.type === 'stderr') {
+                    const text = (data.text || '').replace(/\n/g, '\r\n');
+                    if (term) term.write(`\x1b[31m${text}\x1b[0m`);
+                }
             });
 
             window.socket.on('clear-terminal', function () {
-                clearTerminal();
+                if (typeof clearTerminal === 'function') {
+                    clearTerminal();
+                }
             });
 
             window.socket.on('user-joined', function (data) {
@@ -2653,6 +2666,34 @@ function hasConnectedFiles() {
 }
 
 
+// Function to update UI based on local server status
+// Function to update UI based on local server status
+window.updateLocalStatusUI = function (isUp) {
+    const statusDot = document.getElementById('localServiceIndicator');
+    const statusText = document.getElementById('localServiceText');
+    const setupBtn = document.getElementById('setupLocalServiceBtn');
+
+    if (statusDot) statusDot.style.background = isUp ? '#7ef02c' : '#f14c4c';
+    if (statusText) statusText.textContent = `Local Service: ${isUp ? 'Online' : 'Offline'}`;
+
+    if (setupBtn) {
+        const btnText = setupBtn.querySelector('span:first-child');
+        const btnSubText = setupBtn.querySelector('span:last-child');
+        if (isUp) {
+            if (btnText) btnText.textContent = 'Manage Local Service';
+            if (btnSubText) btnSubText.textContent = 'Configure engine settings';
+        } else {
+            if (btnText) btnText.textContent = 'Setup Local Service';
+            if (btnSubText) btnSubText.textContent = 'Unlock interactive execution';
+        }
+    }
+
+    if (window.lastLocalStatus !== isUp) {
+        console.log(`[LocalNode] Server is now ${isUp ? 'ONLINE' : 'OFFLINE'}`);
+        window.lastLocalStatus = isUp;
+    }
+};
+
 function executeCode() {
     const code = editor && editor.getValue ? editor.getValue() : document.getElementById('fallback-editor')?.value || '';
     const language = document.getElementById('languageSelect').value;
@@ -2670,64 +2711,108 @@ function executeCode() {
     console.log('ExecutionManager available:', !!window.executionManager);
     console.log('Local available:', window.executionManager?.isLocalAvailable);
 
-    // Use ExecutionManager if available (handles local/remote switching)
-    if (window.executionManager && (window.executionManager.isLocalAvailable || window.executionManager.executionMode === 'local')) {
-        console.log('Using ExecutionManager for execution');
-
-        window.executionManager.execute(code, language, {
-            roomId: window.currentRoom,
-            socket: window.socket
-        }).then(result => {
-            console.log('Execution result:', result);
-            resetRunButton();
-
-            if (result.pending) {
-                // Remote execution - result will come via socket
+    // Setup output handler for local execution if not already set
+    // Setup/refresh output handler for local execution
+    if (window.executionManager) {
+        window.executionManager.onExecutionOutput = (data) => {
+            // Visual Debug to confirm output reception
+            try {
+                const rb = document.getElementById('runCode');
+                if (rb) rb.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Rx: ${data?.type}`;
+            } catch (e) { }
+            console.log('[LocalOutput]', data?.type, data?.data); // Debug log
+            // Check for clear terminal control message
+            if (data && data.type === 'control' && data.action === 'clear-terminal') {
+                if (typeof clearTerminal === 'function') clearTerminal();
                 return;
             }
 
-            // Display output based on language
-            if (language === 'javascript') {
-                // JavaScript goes to console panel
-                const consolePanel = document.getElementById('console');
-                if (consolePanel) consolePanel.innerHTML = '';
+            // Handle standard output
+            if (data && data.type) {
+                // If it's a simple output object from local-server
+                const output = data.data || '';
+                const type = data.type; // 'stdout', 'stderr', 'info'
 
-                if (result.error) {
-                    displayConsoleOutput(result.error, 'error');
-                } else if (result.output && result.output.trim()) {
-                    const lines = result.output.trim().split('\n');
-                    lines.forEach(line => {
-                        if (line.trim()) displayConsoleOutput(line, 'log');
-                    });
-                } else {
-                    displayConsoleOutput('Code executed successfully', 'success');
+                // Route to terminal display
+                if (type === 'stdout' || type === 'info') {
+                    if (typeof term !== 'undefined') {
+                        // Use raw output, term handles conversion via convertEol: true
+                        term.write(output);
+                    }
+                } else if (type === 'stderr') {
+                    if (typeof term !== 'undefined') {
+                        term.write(`\x1b[31m${output}\x1b[0m`);
+                    }
                 }
-            } else {
-                // Other languages go to terminal - clear first, then display
-                if (typeof clearTerminal === 'function') {
-                    clearTerminal();
-                } else if (typeof term !== 'undefined' && term && term.clear) {
-                    term.clear();
-                }
-                // Pass null for complexity to hide complexity analysis for local execution
-                displayOutputInTerminal(result.output || '', result.error || '', null, result.exitCode);
             }
-        }).catch(error => {
-            console.error('Execution error:', error);
-            resetRunButton();
-            showNotification('Execution error: ' + error.message, 'error');
-        });
+        };
+    }
 
-        // Show HTML preview immediately for better UX
-        if (language === 'html') {
-            showPreview(code);
-        }
+    // Unified Execution Logic (Directs to Local or Remote)
+    const em = window.executionManager;
+    const currentMode = document.getElementById('executionModeSelect')?.value || (em ? em.executionMode : 'remote');
+
+    // Determine if we should attempt local execution
+    let shouldTryLocal = false;
+    if (currentMode === 'local') {
+        shouldTryLocal = true;
+    } else if (currentMode === 'auto') {
+        shouldTryLocal = em && em.isLocalServerUp;
+    }
+
+    if (shouldTryLocal && em) {
+        console.log('[Runner] Attempting Local Execution');
+        activeExecutionMode = 'local';
+
+        // Ensure handler is hooked to terminal
+        em.onExecutionOutput = (data) => {
+            if (data && data.type) {
+                const output = data.data || '';
+                if (data.type === 'stdout' || data.type === 'info') {
+                    if (typeof term !== 'undefined') term.write(output);
+                } else if (data.type === 'stderr') {
+                    if (typeof term !== 'undefined') term.write(`\x1b[31m${output}\x1b[0m`);
+                }
+            }
+        };
+
+        if (typeof clearTerminal === 'function') clearTerminal();
+
+        em.execute(code, language).then(result => {
+            resetRunButton();
+            if (result && !result.success && result.error) {
+                if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[31mError: ${result.error}\x1b[0m`);
+            }
+            if (result && typeof result.exitCode !== 'undefined') {
+                if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[32m...Program finished (exit code ${result.exitCode})\x1b[0m`);
+            }
+        }).catch(err => {
+            resetRunButton();
+            if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[31mLocal Error: ${err.message}\x1b[0m`);
+        });
         return;
     }
 
-    // Fallback: Try server execution if connected
+    // Remote Execution Flow (Fallback or Explicit)
     if (window.socket && window.socket.connected) {
-        console.log('Sending to server for execution (ExecutionManager not available)');
+        activeExecutionMode = 'remote';
+
+        if (typeof clearTerminal === 'function') clearTerminal();
+
+        // Notify user if falling back
+        if (currentMode === 'local' || (currentMode === 'auto' && em && !em.isLocalServerUp)) {
+            if (typeof term !== 'undefined') {
+                term.writeln('\x1b[33m[Notice] Local server is offline. Using remote server fallback...\x1b[0m\r\n');
+            }
+        }
+
+        console.log('Using REMOTE server for execution');
+
+        // IMMEDIATE CLEAR: Clear terminal right now before sending request
+        if (typeof clearTerminal === 'function') {
+            clearTerminal();
+        }
+
         const roomId = window.currentRoom || 'solo-' + Date.now();
 
         window.executionId = Date.now();
@@ -3596,6 +3681,7 @@ function initTerminal() {
             brightWhite: '#ffffff'
         }
     });
+    window.term = term; // Expose globally for handlers
 
     // Addons
     fitAddon = new FitAddon.FitAddon();
@@ -3664,20 +3750,42 @@ function initTerminal() {
     term.writeln('\x1b[1;32mWelcome to CodeSynq Terminal\x1b[0m');
     term.writeln('Ready to compile and run...');
     term.writeln('');
+    term.writeln('');
+}
+
+function clearTerminal() {
+    if (term) {
+        term.clear();
+        term.reset();
+        term.writeln('\x1b[1;32mCodeSynq Terminal Cleared\x1b[0m');
+    }
 }
 
 let currentInputBuffer = '';
 
 function processInput(input) {
-    if (window.socket && window.socket.connected && window.currentRoom) {
+    console.log('[processInput] Active execution:', activeExecutionMode, 'Input:', input);
+
+    // Route based on which execution is currently active
+    if (activeExecutionMode === 'local' &&
+        window.executionManager && window.executionManager.localClient) {
+        // Send to local server via HTTP POST
+        window.executionManager.localClient.sendInput(input + '\n');
+    } else if (activeExecutionMode === 'remote' &&
+        window.socket && window.socket.connected && window.currentRoom) {
+        // Send to remote server via socket
+        window.socket.emit('terminal-input', {
+            roomId: window.currentRoom,
+            input: input + '\n'
+        });
+    } else if (window.socket && window.socket.connected && window.currentRoom) {
+        // Fallback or remote default
         window.socket.emit('terminal-input', {
             roomId: window.currentRoom,
             input: input + '\n'
         });
     } else {
-        // Fallback or local echo command handling? 
-        // For now, just show it's sent
-        // console.log("Input sent:", input);
+        console.log("No active connection to send input to");
     }
 }
 
@@ -3714,6 +3822,7 @@ function displayOutputInTerminal(output, error, complexity, exitCode) {
     }
 
     if (exitCode !== undefined && exitCode !== null) {
+        // Ensure we are on a new line before printing status
         term.writeln('');
         term.writeln(`\x1b[32m...Program finished with exit code ${exitCode}\x1b[0m`);
         term.writeln(`\x1b[32mPress ENTER to exit console.\x1b[0m`);

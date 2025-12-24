@@ -15,33 +15,7 @@ const io = socketIo(server, {
     }
 });
 
-app.use(express.static(path.join(__dirname)));
-app.use(express.json());
-
-// Code Share Module uses Firebase client-side (no server routes needed)
-// const shareRoutes = require('./modules/share-routes');
-// shareRoutes.setupRoutes(app);
-
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        connections: io.engine.clientsCount || 0
-    });
-});
-
-// Socket.io status endpoint
-app.get('/socket-status', (req, res) => {
-    res.json({
-        connected_clients: io.engine.clientsCount || 0,
-        rooms: rooms.size,
-        users: users.size
-    });
-});
-
-// Local Execution Service download endpoint
+// Local Execution Service download endpoint - MOVED ABOVE STATIC to avoid stale file serving
 app.get('/local_execution/CodeSynq-LocalExecution.zip', (req, res) => {
     const archiver = require('archiver');
     const localExecDir = path.join(__dirname, 'local_execution');
@@ -65,6 +39,8 @@ app.get('/local_execution/CodeSynq-LocalExecution.zip', (req, res) => {
 
     // Include all required files for local execution setup
     const filesToInclude = [
+        'INSTALL.bat',            // Primary installer entry
+        'setup.bat',              // Alias for installer
         'Setup.hta',              // Visual installer
         'ExecutionPanel.hta',     // Execution history viewer
         'local-server.js',        // Main service
@@ -84,6 +60,27 @@ app.get('/local_execution/CodeSynq-LocalExecution.zip', (req, res) => {
 
     archive.finalize();
 });
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        connections: io.engine.clientsCount || 0
+    });
+});
+
+// Socket.io status endpoint
+app.get('/socket-status', (req, res) => {
+    res.json({
+        connected_clients: io.engine.clientsCount || 0,
+        rooms: rooms.size,
+        users: users.size
+    });
+});
+
+app.use(express.static(path.join(__dirname)));
+app.use(express.json());
 
 const rooms = new Map();
 const users = new Map();
@@ -217,10 +214,10 @@ io.on('connection', (socket) => {
     socket.on('terminal-input', (data) => {
         const { roomId, input } = data;
         if (runningProcesses.has(socket.id)) {
-            const process = runningProcesses.get(socket.id);
+            const proc = runningProcesses.get(socket.id);
             // Don't echo input back to terminal (local echo handles it)
             // socket.emit('terminal-output', { text: input, type: 'input' }); 
-            process.stdin.write(input);
+            proc.stdin.write(input);
         }
     });
 
@@ -287,8 +284,8 @@ io.on('connection', (socket) => {
         console.log('User disconnected:', socket.id);
 
         if (runningProcesses.has(socket.id)) {
-            const process = runningProcesses.get(socket.id);
-            process.kill();
+            const proc = runningProcesses.get(socket.id);
+            proc.kill();
             runningProcesses.delete(socket.id);
         }
 
@@ -307,6 +304,7 @@ io.on('connection', (socket) => {
 });
 
 function executePython(code, socket, roomId, callback) {
+    socket.emit('clear-terminal');
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir);
@@ -317,7 +315,10 @@ function executePython(code, socket, roomId, callback) {
 
     fs.writeFileSync(pyFile, code);
 
-    const pythonProcess = spawn('python', [pyFile]);
+    const pythonProcess = spawn('python', ['-u', pyFile], {
+        stdio: ['pipe', 'pipe', 'pipe'], // Enable stdin, stdout, stderr pipes
+        env: { ...process.env, PYTHONUNBUFFERED: '1' } // Unbuffered output
+    });
     runningProcesses.set(socket.id, pythonProcess);
 
     let output = '';
@@ -365,6 +366,7 @@ function executePython(code, socket, roomId, callback) {
 }
 
 function executeJava(code, socket, roomId, callback) {
+    socket.emit('clear-terminal');
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir);
@@ -389,6 +391,44 @@ ${code.split('\n').map(line => '        ' + line).join('\n')}
 }`;
     }
 
+    // Auto-inject unbuffering logic for System.out
+    if (code.includes('public static void main')) {
+        code = code.replace(
+            /(public\s+static\s+void\s+main\s*\([^)]*\)\s*\{)/,
+            '$1\n        try { System.setOut(new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out)) { public void write(byte[] b, int o, int l) { super.write(b, o, l); flush(); } public void write(int b) { super.write(b); flush(); } }); } catch (Exception e) {}'
+        );
+    }
+
+    // Auto-add prompts before Scanner input calls if missing
+    // Simple heuristic to help learners
+    const lines = code.split('\n');
+    let needsPrompt = false;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('Scanner') && lines[i].includes('new Scanner')) {
+            // Found scanner initialization, good
+        }
+
+        // Check for common scanner methods
+        if (lines[i].match(/\.\s*next(Int|Double|Line|Float|Long|Boolean)?\s*\(/)) {
+            // Check if previous non-empty line has System.out.print
+            let hasPrint = false;
+            for (let j = i - 1; j >= 0; j--) {
+                const trimmed = lines[j].trim();
+                if (trimmed && !trimmed.startsWith('//')) {
+                    hasPrint = trimmed.includes('System.out.print');
+                    break;
+                }
+            }
+
+            if (!hasPrint) {
+                const indent = lines[i].match(/^\s*/)[0];
+                lines.splice(i, 0, `${indent}System.out.print("Enter input: "); // Auto-added prompt`);
+                i++;
+            }
+        }
+    }
+    code = lines.join('\n');
+
     const javaFile = path.join(tempDir, `${className}.java`);
 
     fs.writeFileSync(javaFile, code);
@@ -410,7 +450,9 @@ ${code.split('\n').map(line => '        ' + line).join('\n')}
         }
 
         const classFile = javaFile.replace('.java', '.class');
-        const javaProcess = spawn('java', ['-cp', tempDir, className]);
+        const javaProcess = spawn('java', ['-cp', tempDir, className], {
+            stdio: ['pipe', 'pipe', 'pipe'] // Enable stdin, stdout, stderr pipes
+        });
         runningProcesses.set(socket.id, javaProcess);
 
         let output = '';
@@ -468,6 +510,7 @@ ${code.split('\n').map(line => '        ' + line).join('\n')}
 }
 
 function executeC(code, socket, roomId, callback) {
+    socket.emit('clear-terminal');
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir);
@@ -477,7 +520,43 @@ function executeC(code, socket, roomId, callback) {
     const cFile = path.join(tempDir, `${sessionId}.c`);
     const exeFile = path.join(tempDir, `${sessionId}.exe`);
 
-    fs.writeFileSync(cFile, code);
+    // Auto-inject unbuffering for stdout so learners don't need fflush()
+    // This makes printf() appear immediately before scanf()
+    let modifiedCode = code;
+    if (code.includes('int main')) {
+        // Inject setvbuf right after main() opening brace
+        modifiedCode = code.replace(
+            /(int\s+main\s*\([^)]*\)\s*\{)/,
+            '$1\n    setvbuf(stdout, NULL, _IONBF, 0); // Auto-added: unbuffer stdout\n'
+        );
+
+        // Auto-add prompts before scanf if there's no printf immediately before
+        // This helps learners who forget to add input prompts
+        const lines = modifiedCode.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes('scanf(')) {
+                // Check if previous non-empty line has printf
+                let hasPrintf = false;
+                for (let j = i - 1; j >= 0; j--) {
+                    const trimmed = lines[j].trim();
+                    if (trimmed && !trimmed.startsWith('//')) {
+                        hasPrintf = trimmed.includes('printf(');
+                        break;
+                    }
+                }
+
+                if (!hasPrintf) {
+                    // Add a generic prompt before scanf
+                    const indent = lines[i].match(/^\s*/)[0];
+                    lines.splice(i, 0, `${indent}printf("Enter input: "); // Auto-added prompt`);
+                    i++; // Skip the line we just added
+                }
+            }
+        }
+        modifiedCode = lines.join('\n');
+    }
+
+    fs.writeFileSync(cFile, modifiedCode);
 
     const compileProcess = spawn('gcc', [cFile, '-o', exeFile]);
 
@@ -498,7 +577,9 @@ function executeC(code, socket, roomId, callback) {
             return;
         }
 
-        const cProcess = spawn(exeFile);
+        const cProcess = spawn(exeFile, [], {
+            stdio: ['pipe', 'pipe', 'pipe'] // Enable stdin, stdout, stderr pipes
+        });
         runningProcesses.set(socket.id, cProcess);
 
         let output = '';
@@ -601,6 +682,7 @@ function executeC(code, socket, roomId, callback) {
 }
 
 function executeCpp(code, socket, roomId, callback) {
+    socket.emit('clear-terminal');
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir);
@@ -610,7 +692,41 @@ function executeCpp(code, socket, roomId, callback) {
     const cppFile = path.join(tempDir, `${sessionId}.cpp`);
     const exeFile = path.join(tempDir, `${sessionId}.exe`);
 
-    fs.writeFileSync(cppFile, code);
+    // Auto-inject unbuffering for stdout so learners don't need cout.flush()
+    let modifiedCode = code;
+    if (code.includes('int main')) {
+        // Inject unbuffering right after main() opening brace
+        modifiedCode = code.replace(
+            /(int\s+main\s*\([^)]*\)\s*\{)/,
+            '$1\n    std::cout.setf(std::ios::unitbuf); // Auto-added: unbuffer cout\n    setvbuf(stdout, NULL, _IONBF, 0); // Auto-added: unbuffer C-style output\n'
+        );
+
+        // Auto-add prompts before cin if there's no cout immediately before
+        const lines = modifiedCode.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes('cin >>') || lines[i].includes('std::cin >>')) {
+                // Check if previous non-empty line has cout
+                let hasCout = false;
+                for (let j = i - 1; j >= 0; j--) {
+                    const trimmed = lines[j].trim();
+                    if (trimmed && !trimmed.startsWith('//')) {
+                        hasCout = trimmed.includes('cout <<') || trimmed.includes('std::cout <<') || trimmed.includes('printf(');
+                        break;
+                    }
+                }
+
+                if (!hasCout) {
+                    const indent = lines[i].match(/^\s*/)[0];
+                    // Use flush to ensure it appears
+                    lines.splice(i, 0, `${indent}std::cout << "Enter input: " << std::flush; // Auto-added prompt`);
+                    i++;
+                }
+            }
+        }
+        modifiedCode = lines.join('\n');
+    }
+
+    fs.writeFileSync(cppFile, modifiedCode);
 
     const compileProcess = spawn('g++', [cppFile, '-o', exeFile]);
 
@@ -632,7 +748,9 @@ function executeCpp(code, socket, roomId, callback) {
             }
         }
 
-        const cppProcess = spawn(exeFile);
+        const cppProcess = spawn(exeFile, [], {
+            stdio: ['pipe', 'pipe', 'pipe'] // Enable stdin, stdout, stderr pipes
+        });
         runningProcesses.set(socket.id, cppProcess);
 
         let output = '';

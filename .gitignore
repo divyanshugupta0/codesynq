@@ -1,0 +1,13 @@
+node_modules/
+temp/
+*.zip
+temp_old_server.js
+processInputUpdate.txt
+*.class
+*.exe
+*.o
+*.obj
+.DS_Store
+*.log
+local_execution/node_modules/
+local_execution/CodeSynq-LocalExecution.zip
