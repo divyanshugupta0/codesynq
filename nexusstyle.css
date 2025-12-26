@@ -451,7 +451,7 @@ body {
 /* Output Section */
 .resizer {
     height: 4px;
-    background: var(--border-color);
+    background: transparent;
     cursor: row-resize;
     position: relative;
     z-index: 100;
