@@ -1150,10 +1150,16 @@ function setupUI() {
         } else {
             const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
             applyTheme(savedTheme);
-            document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+            // Updated selector to target theme circles correctly
+            document.querySelectorAll('.theme-circle').forEach(c => {
+                c.classList.remove('active');
+                if (c.classList.contains(savedTheme)) c.classList.add('active');
+            });
             loadEditorSettings();
         }
     }, 100);
+
+
 
     // Save content immediately for non-logged users and restore if available
     if (!window.currentUser) {
@@ -2182,16 +2188,98 @@ function setupThemeAndSettings() {
     document.addEventListener('click', closeAllDropdowns);
 }
 
+// Global theme setter for UI
+window.setTheme = function (theme) {
+    applyTheme(theme);
+    // Visual update for circles
+    document.querySelectorAll('.theme-circle').forEach(c => {
+        c.classList.remove('active');
+        if (c.classList.contains(theme)) c.classList.add('active');
+    });
+    // Save locally or to firebase
+    if (window.currentUser && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/theme`).set(theme);
+    } else {
+        localStorage.setItem('selectedTheme', theme);
+    }
+    showNotification(`Theme changed to ${theme}`);
+};
+
+window.toggleBasicMode = function () {
+    // Assuming 'classic' is the basic layout key based on context
+    const layout = 'classic';
+    document.body.className = document.body.className.replace(/layout-\w+/g, '').trim();
+    document.body.classList.add(`layout-${layout}`);
+
+    // Save preference
+    if (window.currentUser && typeof database !== 'undefined') {
+        database.ref(`users/${window.currentUser.uid}/preferences/layout`).set(layout);
+    } else {
+        localStorage.setItem('selectedLayout', layout);
+    }
+
+    // Update active state in layout menu if it exists
+    document.querySelectorAll('.layout-option').forEach(opt => {
+        opt.classList.remove('active');
+        if (opt.dataset.layout === layout) opt.classList.add('active');
+    });
+
+    closeAllDropdowns();
+    showNotification('Switched to Basic Mode (Classic Layout)');
+};
+
 function setupSettingsHandlers() {
     const fontSizeSelect = document.getElementById('fontSizeSelect');
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeValue = document.getElementById('fontSizeValue');
     const lineWrapToggle = document.getElementById('lineWrapToggle');
     const autoCompleteToggle = document.getElementById('autoCompleteToggle');
     const lineNumbersToggle = document.getElementById('lineNumbersToggle');
     const minimapToggle = document.getElementById('minimapToggle');
+    const glassEffectToggle = document.getElementById('glassEffectToggle');
+    const cursorStyleSelect = document.getElementById('cursorStyleSelect');
+    const executionModeSelect = document.getElementById('executionModeSelect');
+    const mouseSparkToggle = document.getElementById('mouseSparkToggle');
+
+
+    // Helper to update slider track gradient
+    const updateSliderBackground = (slider) => {
+        const min = parseFloat(slider.min) || 0;
+        const max = parseFloat(slider.max) || 100;
+        const val = parseFloat(slider.value);
+        const percentage = ((val - min) / (max - min)) * 100;
+        slider.style.background = `linear-gradient(to right, var(--accent-color) ${percentage}%, var(--bg-tertiary) ${percentage}%)`;
+    };
+
+    // Font Size Slider
+    if (fontSizeSlider) {
+        // Initialize background
+        updateSliderBackground(fontSizeSlider);
+
+        fontSizeSlider.addEventListener('input', function () {
+            const fontSize = parseInt(this.value);
+            if (fontSizeValue) fontSizeValue.textContent = fontSize + 'px';
+            if (editor) {
+                editor.updateOptions({ fontSize });
+            }
+            // Sync hidden select
+            if (fontSizeSelect) fontSizeSelect.value = fontSize;
+            updateSliderBackground(this);
+        });
+
+        fontSizeSlider.addEventListener('change', function () {
+            saveEditorSetting('fontSize', parseInt(this.value));
+            showNotification(`Font size: ${this.value}px`);
+        });
+    }
 
     if (fontSizeSelect) {
         fontSizeSelect.addEventListener('change', function () {
             const fontSize = parseInt(this.value);
+            if (fontSizeSlider) {
+                fontSizeSlider.value = fontSize;
+                if (fontSizeValue) fontSizeValue.textContent = fontSize + 'px';
+            }
             if (editor) {
                 editor.updateOptions({ fontSize });
             }
@@ -2249,6 +2337,37 @@ function setupSettingsHandlers() {
             }
         });
     }
+
+    // glassEffectToggle removed from UI
+
+    if (cursorStyleSelect) {
+        cursorStyleSelect.addEventListener('change', function () {
+            const style = this.value;
+            if (editor) editor.updateOptions({ cursorStyle: style });
+            saveEditorSetting('cursorStyle', style);
+        });
+    }
+
+    if (executionModeSelect) {
+        executionModeSelect.addEventListener('change', function () {
+            saveEditorSetting('executionMode', this.value);
+            showNotification(`Execution mode set to: ${this.options[this.selectedIndex].text}`);
+        });
+    }
+
+    if (mouseSparkToggle) {
+        mouseSparkToggle.addEventListener('change', function () {
+            if (window.toggleMouseSparks) {
+                window.toggleMouseSparks(this.checked);
+            }
+            saveEditorSetting('mouseSparks', this.checked);
+            // Also save to separate localStorage for early load
+            localStorage.setItem('mouseSparks', this.checked);
+            showNotification(`Mouse sparkles ${this.checked ? 'enabled' : 'disabled'}`);
+        });
+    }
+
+
 }
 
 function saveEditorSetting(key, value) {
@@ -2284,7 +2403,9 @@ function loadEditorSettings() {
             lineWrap: JSON.parse(localStorage.getItem('editor_lineWrap') || 'true'),
             autoComplete: JSON.parse(localStorage.getItem('editor_autoComplete') || 'true'),
             lineNumbers: JSON.parse(localStorage.getItem('editor_lineNumbers') || 'true'),
-            minimap: JSON.parse(localStorage.getItem('editor_minimap') || 'false')
+            minimap: JSON.parse(localStorage.getItem('editor_minimap') || 'false'),
+            cursorStyle: JSON.parse(localStorage.getItem('editor_cursorStyle') || '"line"'),
+            mouseSparks: localStorage.getItem('mouseSparks') === 'true'
         };
         // Ensure editor is ready before applying settings
         if (editor) {
@@ -2306,7 +2427,8 @@ function applyEditorSettings(settings) {
         lineWrap: true,
         autoComplete: true,
         lineNumbers: true,
-        minimap: false
+        minimap: false,
+        cursorStyle: 'line'
     };
 
     const finalSettings = { ...defaults, ...settings };
@@ -2317,12 +2439,22 @@ function applyEditorSettings(settings) {
     const autoCompleteToggle = document.getElementById('autoCompleteToggle');
     const lineNumbersToggle = document.getElementById('lineNumbersToggle');
     const minimapToggle = document.getElementById('minimapToggle');
+    const cursorStyleSelect = document.getElementById('cursorStyleSelect');
+
+    const mouseSparkToggle = document.getElementById('mouseSparkToggle');
 
     if (fontSizeSelect) fontSizeSelect.value = finalSettings.fontSize;
     if (lineWrapToggle) lineWrapToggle.checked = finalSettings.lineWrap;
     if (autoCompleteToggle) autoCompleteToggle.checked = finalSettings.autoComplete;
     if (lineNumbersToggle) lineNumbersToggle.checked = finalSettings.lineNumbers;
     if (minimapToggle) minimapToggle.checked = finalSettings.minimap;
+    if (cursorStyleSelect) cursorStyleSelect.value = finalSettings.cursorStyle;
+
+    // Apply mouse sparks
+    if (settings.mouseSparks !== undefined) {
+        if (mouseSparkToggle) mouseSparkToggle.checked = settings.mouseSparks;
+        if (window.toggleMouseSparks) window.toggleMouseSparks(settings.mouseSparks);
+    }
 
     // Apply to editor
     if (editor) {
@@ -2334,7 +2466,8 @@ function applyEditorSettings(settings) {
             lineNumbers: finalSettings.lineNumbers ? 'on' : 'off',
             minimap: { enabled: finalSettings.minimap },
             quickSuggestions: finalSettings.autoComplete,
-            suggestOnTriggerCharacters: finalSettings.autoComplete
+            suggestOnTriggerCharacters: finalSettings.autoComplete,
+            cursorStyle: finalSettings.cursorStyle
         });
     }
     editorSettingsApplied = true;
@@ -2516,11 +2649,11 @@ function setupResizer() {
         } else {
             const mouseY = e.clientY - containerRect.top - toolbarHeight;
             const minEditorHeight = 100;
-            const minOutputHeight = 20; // Allow complete collapse like VS Code
+            const minOutputHeight = 0; // Allow complete collapse like VS Code
             const maxEditorHeight = containerRect.height - toolbarHeight - minOutputHeight - 4;
 
             const newEditorHeight = Math.max(minEditorHeight, Math.min(maxEditorHeight, mouseY));
-            const newOutputHeight = Math.max(20, containerRect.height - toolbarHeight - newEditorHeight - 4);
+            const newOutputHeight = Math.max(0, containerRect.height - toolbarHeight - newEditorHeight - 4);
 
             editorContainer.style.cssText = `height: ${newEditorHeight}px; flex-shrink: 0; overflow: auto; max-height: ${newEditorHeight}px; box-sizing: border-box;`;
             outputSection.style.cssText = `height: ${newOutputHeight}px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; max-height: ${newOutputHeight}px; box-sizing: border-box;`;
@@ -5025,7 +5158,11 @@ function loadUserPreferences() {
         // For non-logged users, apply default theme immediately
         const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
         applyTheme(savedTheme);
-        document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
+        // Correctly target theme circles in settings menu
+        document.querySelectorAll('.theme-circle').forEach(c => {
+            c.classList.remove('active');
+            if (c.classList.contains(savedTheme)) c.classList.add('active');
+        });
         themeApplied = true;
         layoutApplied = true;
         editorSettingsApplied = true;
@@ -5041,18 +5178,8 @@ function loadUserPreferences() {
         if (prefs) {
             // Apply saved theme
             if (prefs.theme) {
-                document.body.setAttribute('data-theme', prefs.theme);
-                if (editor) {
-                    const editorThemes = {
-                        dark: 'vs-dark',
-                        light: 'vs',
-                        blue: 'vs-dark',
-                        green: 'vs-dark'
-                    };
-                    monaco.editor.setTheme(editorThemes[prefs.theme] || 'vs-dark');
-                }
-                document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('active'));
-                document.querySelector(`[data-theme="${prefs.theme}"]`)?.classList.add('active');
+                // Use global setter to ensure UI stays in sync
+                window.setTheme(prefs.theme);
                 themeApplied = true;
             } else {
                 themeApplied = true;
@@ -7162,83 +7289,84 @@ function signOut() {
 window.signOut = signOut; // Make global
 
 function setupProfileFunctions() {
-    // 1. Profile Picture Upload
-    const uploadBtn = document.getElementById('uploadProfilePicBtn');
-    const fileInput = document.getElementById('profilePictureInput');
+    // Prevent duplicate setup
+    if (window._profileFunctionsSetup) return;
+    window._profileFunctionsSetup = true;
 
-    if (uploadBtn && fileInput) {
-        uploadBtn.addEventListener('click', () => {
-            fileInput.click();
-        });
+    // Profile picture upload is now handled by nexus-profile.js
 
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            // Validate file type
-            if (!file.type.startsWith('image/')) {
-                showNotification('Please select an image file', 'error');
-                return;
-            }
-
-            // Validate file size (max 2MB)
-            if (file.size > 2 * 1024 * 1024) {
-                showNotification('Image size must be less than 2MB', 'error');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const base64String = event.target.result;
-
-                // Update specific user node
-                if (window.currentUser) {
-                    const uid = window.currentUser.uid;
-                    const updates = {};
-                    updates[`users/${uid}/profilePicture`] = {
-                        data: base64String,
-                        lastUpdated: firebase.database.ServerValue.TIMESTAMP
-                    };
-
-                    // Also update basic info photoURL for easier access
-                    updates[`users/${uid}/photoURL`] = base64String;
-
-                    database.ref().update(updates).then(() => {
-                        showNotification('Profile picture updated!');
-
-                        // Update UI immediately
-                        document.getElementById('profilePicture').src = base64String;
-                        document.getElementById('profilePictureContainer').style.display = 'block';
-                        document.getElementById('profileBtnImage').src = base64String;
-                        document.getElementById('profileBtnImage').style.display = 'block';
-
-                        // Hide default icon
-                        const icon = document.querySelector('#profileBtn i');
-                        if (icon) icon.style.display = 'none';
-                    }).catch(err => {
-                        console.error('Error updating profile pic:', err);
-                        showNotification('Failed to update profile picture', 'error');
-                    });
-                }
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-
-    // 2. Change Username
+    // Change Username functionality
     const changeUsernameBtn = document.getElementById('changeUsernameBtn');
     if (changeUsernameBtn) {
-        changeUsernameBtn.addEventListener('click', () => {
+        changeUsernameBtn.addEventListener('click', async () => {
             if (!window.currentUser) return;
 
             const currentUsername = document.getElementById('profileUsername').textContent.replace('@', '');
-            const newUsername = prompt('Enter new username:', currentUsername);
 
-            if (newUsername && newUsername.trim() !== '' && newUsername !== currentUsername) {
+            // Prevent duplicate modals
+            if (document.querySelector('.modal[style*="display: block"]')) {
+                console.log('Modal already open, skipping');
+                return;
+            }
+
+            // Create custom input modal
+            const customPrompt = await new Promise((resolve) => {
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.style.display = 'block';
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 400px;">
+                        <h2>Change Username</h2>
+                        <div class="form-group">
+                            <label>New Username:</label>
+                            <input type="text" id="newUsernameInput" value="${currentUsername}" 
+                                   placeholder="Enter new username..." 
+                                   style="width: 100%; padding: 10px; margin-top: 8px; background: var(--bg-tertiary); 
+                                          border: 1px solid var(--border-color); color: var(--text-primary); 
+                                          border-radius: 6px; font-size: 14px;">
+                        </div>
+                        <div class="modal-actions" style="margin-top: 20px;">
+                            <button class="btn-primary" id="confirmUsernameChange">Change</button>
+                            <button class="btn-secondary" id="cancelUsernameChange">Cancel</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                const input = modal.querySelector('#newUsernameInput');
+                input.focus();
+                input.select();
+
+                modal.querySelector('#confirmUsernameChange').onclick = () => {
+                    const value = input.value.trim();
+                    document.body.removeChild(modal);
+                    resolve(value);
+                };
+
+                modal.querySelector('#cancelUsernameChange').onclick = () => {
+                    document.body.removeChild(modal);
+                    resolve(null);
+                };
+
+                input.onkeypress = (e) => {
+                    if (e.key === 'Enter') {
+                        const value = input.value.trim();
+                        document.body.removeChild(modal);
+                        resolve(value);
+                    } else if (e.key === 'Escape') {
+                        document.body.removeChild(modal);
+                        resolve(null);
+                    }
+                };
+            });
+
+            const newUsername = customPrompt;
+
+            if (newUsername && newUsername !== '' && newUsername !== currentUsername) {
                 const cleanUsername = newUsername.trim();
                 const uid = window.currentUser.uid;
 
-                // Check if username is taken (simplified check, ideally should be atomic)
+                // Check if username is taken
                 database.ref('usernames').orderByValue().equalTo(cleanUsername).once('value', (snapshot) => {
                     if (snapshot.exists()) {
                         showNotification('Username already taken', 'error');
@@ -7251,6 +7379,9 @@ function setupProfileFunctions() {
                         database.ref().update(updates).then(() => {
                             showNotification(`Username changed to @${cleanUsername}`);
                             document.getElementById('profileUsername').textContent = `@${cleanUsername}`;
+                            if (window.currentUser) {
+                                window.currentUser.username = cleanUsername;
+                            }
                         }).catch(err => {
                             showNotification('Failed to change username', 'error');
                         });

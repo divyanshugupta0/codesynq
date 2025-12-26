@@ -16,6 +16,8 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
     <script src="modules/fullscreen-manager.js"></script>
+    <link rel="stylesheet" href="mouse-spark.css">
+    <script src="mouse-spark.js"></script>
 </head>
 
 <body>
@@ -182,22 +184,28 @@
                 <div class="profile-dropdown" style="position: relative;">
                     <button id="profileBtn" class="title-bar-btn">
                         <i class="fas fa-user"></i>
-                        <img id="profileBtnImage" src=""
-                            style="display: none; position: absolute; inset:0; border-radius: 50%;">
+                        <img id="profileBtnImage" src="" alt="Profile" draggable="false" ondragstart="return false"
+                            oncontextmenu="return false"
+                            style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; pointer-events: none;">
                     </button>
                     <div id="profileMenu" class="dropdown-menu profile-menu">
                         <div class="profile-info">
-                            <div id="profilePictureContainer" style="display:none;"><img id="profilePicture" src="">
+                            <div id="profilePictureContainer" class="profile-picture-container"
+                                title="Click to change profile picture">
+                                <img id="profilePicture" src="" alt="Profile" class="profile-picture" draggable="false"
+                                    ondragstart="return false" oncontextmenu="return false">
+                                <div class="profile-picture-overlay"><i class="fas fa-camera"></i></div>
                             </div>
+                            <input type="file" id="profilePictureInput" accept="image/*" style="display: none;">
                             <span id="profileName">User</span>
                             <span id="profileEmail">email</span>
                             <span id="profileUsername">@user</span>
                         </div>
-                        <button id="uploadProfilePicBtn">Change Pic</button>
-                        <input type="file" id="profilePictureInput" style="display: none;">
-                        <button id="removeProfilePicBtn" style="display: none;">Remove Pic</button>
-                        <button id="changeUsernameBtn">Change Username</button>
-                        <button onclick="signOut()">Sign Out</button>
+                        <button id="uploadProfilePicBtn"><i class="fas fa-camera"></i> Change Pic</button>
+                        <button id="removeProfilePicBtn" style="display: none;"><i class="fas fa-trash-alt"></i> Remove
+                            Pic</button>
+                        <button id="changeUsernameBtn"><i class="fas fa-user-edit"></i> Change Username</button>
+                        <button onclick="signOut()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
                     </div>
                 </div>
             </div>
@@ -243,64 +251,125 @@
                     <div class="settings-dropdown" style="width: 100%;">
                         <div class="activity-btn" id="settingsBtn" title="Settings"><i class="fas fa-cog"></i></div>
                         <div id="settingsMenu" class="dropdown-menu settings-menu" style="left: 48px; bottom: 0;">
-                            <div class="settings-section">
-                                <h4>Editor</h4>
-                                <div class="setting-item"><label>Font:</label><select id="fontSizeSelect">
+                            <div class="settings-header">
+                                <h3>Settings</h3>
+
+                            </div>
+                            <div class="settings-scroll-content">
+                                <!-- Appearance Group -->
+                                <div class="settings-group">
+                                    <div class="group-title">Appearance</div>
+                                    <div class="setting-row">
+                                        <label>Theme</label>
+                                        <div class="theme-selector-mini">
+                                            <div class="theme-circle dark" onclick="setTheme('dark')" title="Dark">
+                                            </div>
+                                            <div class="theme-circle light" onclick="setTheme('light')" title="Light">
+                                            </div>
+                                            <div class="theme-circle blue" onclick="setTheme('blue')" title="Blue">
+                                            </div>
+                                            <div class="theme-circle green" onclick="setTheme('green')" title="Green">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="basicModeBtn" class="setting-action-btn" onclick="toggleBasicMode()"
+                                        title="Switch to Simple/Classic Layout">
+                                        <i class="fas fa-columns"></i>
+                                        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                                            <span>Basic Mode</span>
+                                            <span
+                                                style="font-size: 10px; color: var(--text-secondary); font-weight: 400;">Simple
+                                                Classic Layout</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-row">
+                                        <label>Mouse Sparkles</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="mouseSparkToggle">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Editor Group -->
+                                <div class="settings-group">
+                                    <div class="group-title">Editor</div>
+                                    <div class="setting-row">
+                                        <label>Font Size: <span id="fontSizeValue"
+                                                style="color:var(--primary-color);">14px</span></label>
+                                        <div class="range-control">
+                                            <input type="range" id="fontSizeSlider" min="10" max="30" step="1"
+                                                value="14">
+                                        </div>
+                                    </div>
+                                    <!-- Compatibility hidden select for existing JS -->
+                                    <select id="fontSizeSelect" style="display:none;">
                                         <option value="12">12</option>
                                         <option value="14" selected>14</option>
                                         <option value="16">16</option>
-                                    </select></div><label><input type="checkbox" id="lineWrapToggle" checked>
-                                    Wrap</label><label><input type="checkbox" id="autoCompleteToggle" checked>
-                                    Auto</label>
-                            </div>
-                            <div class="settings-section">
-                                <h4>Display</h4><label><input type="checkbox" id="minimapToggle">
-                                    Minimap</label><label><input type="checkbox" id="lineNumbersToggle" checked> Line
-                                    Nums</label>
-                            </div>
-                            <div class="settings-section">
-                                <h4>UI Design</h4>
-                                <div id="basicModeBtn" class="setting-item"
-                                    style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 8px 0; transition: background 0.2s;">
-                                    <i class="fas fa-columns" style="color: #9cafb5;"></i>
-                                    <div style="display: flex; flex-direction: column;">
-                                        <span style="font-weight: 500;">Basic Mode</span>
-                                        <span style="font-size: 11px; color: var(--text-secondary);">Simple Classic
-                                            Layout</span>
+                                        <option value="18">18</option>
+                                        <option value="20">20</option>
+                                        <option value="24">24</option>
+                                    </select>
+
+                                    <div class="setting-row">
+                                        <label>Word Wrap</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="lineWrapToggle" checked>
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-row">
+                                        <label>Line Numbers</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="lineNumbersToggle" checked>
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-row">
+                                        <label>Minimap</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="minimapToggle">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-row">
+                                        <label>Auto Complete</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="autoCompleteToggle" checked>
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-row">
+                                        <label>Cursor Style</label>
+                                        <select id="cursorStyleSelect" class="setting-select-sm">
+                                            <option value="line">Line</option>
+                                            <option value="block">Block</option>
+                                            <option value="underline">Underline</option>
+                                        </select>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="settings-section">
-                                <h4>Execution</h4>
-                                <div class="setting-item" style="margin-bottom: 8px;">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <i class="fas fa-microchip" style="color: #4ec9b0;"></i>
-                                        Mode:
-                                    </label>
-                                    <select id="executionModeSelect" style="flex: 1; margin-left: 8px;">
-                                        <option value="auto">Auto (Detect)</option>
-                                        <option value="local">Local Only</option>
-                                        <option value="remote">Remote Only</option>
-                                    </select>
-                                </div>
-                                <div id="localServiceStatus" class="setting-item"
-                                    style="display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px;">
-                                    <span id="localServiceIndicator"
-                                        style="width: 8px; height: 8px; border-radius: 50%; background: #f14c4c;"></span>
-                                    <span id="localServiceText">Local Service: Checking...</span>
-                                </div>
-                                <div id="setupLocalServiceBtn" class="setting-item setup-btn-hover"
-                                    style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; transition: all 0.2s; margin-top: 5px;"
-                                    onclick="console.log('Setup button clicked'); if(window.executionManager) window.executionManager.showLocalServiceSetup();"
-                                    onmousedown="this.style.transform='scale(0.98)'; this.style.background='rgba(86,156,214,0.1)'"
-                                    onmouseup="this.style.transform='scale(1)'; this.style.background='transparent'"
-                                    onmouseenter="this.style.background='rgba(255,255,255,0.05)'"
-                                    onmouseleave="this.style.background='transparent'">
-                                    <i class="fas fa-download" style="color: #569cd6; font-size: 16px;"></i>
-                                    <div style="display: flex; flex-direction: column;">
-                                        <span style="font-weight: 600; font-size: 13px;">Setup Local Service</span>
-                                        <span style="font-size: 10px; color: var(--text-secondary);">Unlock interactive
-                                            execution</span>
+
+                                <!-- Execution Group -->
+                                <div class="settings-group">
+                                    <div class="group-title">Execution</div>
+                                    <div class="setting-row">
+                                        <label>Mode</label>
+                                        <select id="executionModeSelect" class="setting-select">
+                                            <option value="auto">Auto (Detect)</option>
+                                            <option value="local">Local Only</option>
+                                            <option value="remote">Remote Only</option>
+                                        </select>
+                                    </div>
+                                    <div id="localServiceStatus" class="setting-info-row">
+                                        <span id="localServiceIndicator" class="status-dot offline"></span>
+                                        <span id="localServiceText">Checking...</span>
+                                    </div>
+                                    <div id="setupLocalServiceBtn" class="setting-action-btn"
+                                        onclick="if(window.executionManager) window.executionManager.showLocalServiceSetup();">
+                                        <i class="fas fa-download"></i>
+                                        <span>Setup Local Service</span>
                                     </div>
                                 </div>
                             </div>
@@ -836,7 +905,7 @@
     <!-- App Scripts -->
     <script src="nexuscode.js?v=20241224_2"></script>
     <script src="shared_functions.js"></script>
-    <script src="profile-picture.js"></script>
+    <script src="nexus-profile.js?v=20241226"></script>
     <script src="toggler.js"></script>
     <script src="conalert.js"></script>
     <script src="nexusshare.js"></script>
@@ -861,6 +930,14 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const database = firebase.database();
+
+        // Make database global for external scripts
+        window.database = database;
+        window.auth = auth;
+
+        // Debug: Check if loadProfilePicture is available
+        console.log('[DEBUG] window.loadProfilePicture:', typeof window.loadProfilePicture);
+        console.log('[DEBUG] loadProfilePicture:', typeof loadProfilePicture);
 
         // Auth state listener
         auth.onAuthStateChanged((user) => {
@@ -898,6 +975,7 @@
 
                     updateUIForLoggedInUser();
                     loadUserCode();
+                    // Load profile using nexus-profile.js
                     if (typeof loadProfilePicture === 'function') loadProfilePicture();
                     setTimeout(() => loadCollaborationSession(), 1000);
                 } else {
@@ -908,14 +986,23 @@
         }
 
         function updateUIForLoggedInUser() {
-            document.getElementById('loginBtn').style.display = 'none';
-            document.getElementById('signupBtn').style.display = 'none';
-            document.querySelector('.profile-dropdown').style.display = 'block';
-            document.querySelector('.notifications-dropdown').style.display = 'block';
-            document.querySelector('.friends-dropdown').style.display = 'block';
-            document.getElementById('profileName').textContent = window.currentUser.displayName;
-            document.getElementById('profileEmail').textContent = window.currentUser.email;
-            document.getElementById('profileUsername').textContent = '@' + window.currentUser.username;
+            const loginBtn = document.getElementById('loginBtn');
+            const signupBtn = document.getElementById('signupBtn');
+            const profileDropdown = document.querySelector('.profile-dropdown');
+            const notificationsDropdown = document.querySelector('.notifications-dropdown');
+            const friendsDropdown = document.querySelector('.friends-dropdown');
+            const profileName = document.getElementById('profileName');
+            const profileEmail = document.getElementById('profileEmail');
+            const profileUsername = document.getElementById('profileUsername');
+
+            if (loginBtn) loginBtn.style.display = 'none';
+            if (signupBtn) signupBtn.style.display = 'none';
+            if (profileDropdown) profileDropdown.style.display = 'block';
+            if (notificationsDropdown) notificationsDropdown.style.display = 'block';
+            if (friendsDropdown) friendsDropdown.style.display = 'block';
+            if (profileName && window.currentUser) profileName.textContent = window.currentUser.displayName || 'User';
+            if (profileEmail && window.currentUser) profileEmail.textContent = window.currentUser.email || '';
+            if (profileUsername && window.currentUser) profileUsername.textContent = '@' + (window.currentUser.username || 'user');
 
             // Update save button for logged in user
             const saveBtn = document.getElementById('saveCode');
@@ -937,6 +1024,7 @@
             }
 
             loadSharedCodes();
+            // Load profile using nexus-profile.js
             if (typeof loadProfilePicture === 'function') loadProfilePicture();
         }
 

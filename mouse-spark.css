@@ -1,0 +1,23 @@
+.mouse-spark {
+    position: fixed;
+    pointer-events: none;
+    border-radius: 50%;
+    width: 6px;
+    height: 6px;
+    z-index: 10000;
+    animation: spark-fade 0.8s forwards;
+    /* Default color, overridden by JS */
+    background: white;
+}
+
+@keyframes spark-fade {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(1) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(0, 40px) scale(0.1) rotate(180deg);
+    }
+}

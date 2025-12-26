@@ -105,7 +105,7 @@ async function uploadProfilePicture(file) {
         if (profilePicElement) {
             profilePicElement.src = compressedImage;
         }
-        
+
         // Update header button
         const profileBtnImage = document.getElementById('profileBtnImage');
         const profileBtnIcon = document.querySelector('#profileBtn i');
@@ -161,7 +161,7 @@ async function loadProfilePicture() {
         }
 
         const removeBtn = document.getElementById('removeProfilePicBtn');
-        
+
         if (imageUrl) {
             // Display the profile picture in dropdown
             const profilePicElement = document.getElementById('profilePicture');
@@ -169,7 +169,7 @@ async function loadProfilePicture() {
                 profilePicElement.src = imageUrl;
                 profilePicElement.style.display = 'block';
             }
-            
+
             // Display in header button
             const profileBtnImage = document.getElementById('profileBtnImage');
             const profileBtnIcon = document.querySelector('#profileBtn i');
@@ -180,12 +180,12 @@ async function loadProfilePicture() {
                 profileBtnIcon.style.display = 'none';
                 profileBtn.classList.add('has-image');
             }
-            
+
             // Show remove button only if custom profile picture exists
             if (profilePicData && profilePicData.data && removeBtn) {
                 removeBtn.style.display = 'block';
             }
-            
+
             window.currentUser.profilePicture = imageUrl;
         } else {
             // Priority 3: Show avatar with user's initial
@@ -213,7 +213,7 @@ function setDefaultProfilePicture() {
         profilePicElement.src = defaultSvg;
         profilePicElement.style.display = 'block';
     }
-    
+
     // Display avatar in header button
     const profileBtnImage = document.getElementById('profileBtnImage');
     const profileBtnIcon = document.querySelector('#profileBtn i');
