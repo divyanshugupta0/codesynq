@@ -1515,6 +1515,15 @@
     <script>
         // unified Dropdown Handler for all header menus
         document.addEventListener('DOMContentLoaded', function () {
+            // Check for share parameter - redirect to nexuscode.html to view shared code
+            const urlParams = new URLSearchParams(window.location.search);
+            const shareId = urlParams.get('share');
+            if (shareId) {
+                console.log('Share link detected on index.html, redirecting to nexuscode.html...');
+                window.location.href = 'nexuscode.html' + window.location.search;
+                return; // Stop further execution
+            }
+
             // Configuration of all dropdowns
             const dropdowns = [
                 { btn: 'notificationsBtn', menu: 'notificationsMenu' },

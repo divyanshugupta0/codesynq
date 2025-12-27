@@ -121,6 +121,15 @@ let messaging = null;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
+    // Check for share parameter - if present, redirect to nexuscode.html which handles shared codes
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    if (shareId && window.location.pathname.indexOf('nexuscode.html') === -1) {
+        console.log('Share link detected, redirecting to HyperSynq mode to view shared code...');
+        window.location.href = 'nexuscode.html' + window.location.search;
+        return; // Stop further initialization
+    }
+
     console.log('Initializing CodeNexus Pro...');
     initializeApp();
 });

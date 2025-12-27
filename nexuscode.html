@@ -790,45 +790,128 @@
         </div>
     </div>
 
-    <!-- Share Code Modal -->
-    <div id="shareCodeModal" class="modal">
-        <div class="modal-content">
-            <h2>Share Code</h2>
-            <p>Enter username to share your current code:</p>
-            <div class="form-group">
-                <input type="text" id="shareToInput" placeholder="Enter username...">
+    <!-- Share Code Modal - Redesigned -->
+    <div id="shareCodeModal" class="modal share-modal-redesign">
+        <div class="share-modal-content">
+            <!-- Modal Header -->
+            <div class="share-modal-header">
+                <div class="share-modal-header-left">
+                    <div class="share-modal-icon">
+                        <i class="fas fa-share-nodes"></i>
+                    </div>
+                    <div class="share-modal-title">
+                        <h2>Share Code</h2>
+                        <span class="share-modal-subtitle">Share your code with friends or generate a link</span>
+                    </div>
+                </div>
+                <button class="share-modal-close" id="cancelShare">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
-            <div class="form-group">
-                <label>Or select from friends:</label>
-                <div id="shareCodeFriendsList" class="share-friends-list"></div>
-            </div>
-            <div class="share-via-link-wrapper">
-                <span class="share-via-link-text">Share via Link</span>
-                <button class="share-via-link-btn"
-                    onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openShareModal(); }"
-                    title="Generate shareable link">
+
+            <!-- Tabs -->
+            <div class="share-modal-tabs">
+                <button class="share-tab active" data-tab="send">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>Send to Friend</span>
+                </button>
+                <button class="share-tab" data-tab="link">
                     <i class="fas fa-link"></i>
+                    <span>Share Link</span>
+                </button>
+                <button class="share-tab" data-tab="history">
+                    <i class="fas fa-clock-rotate-left"></i>
+                    <span>History</span>
                 </button>
             </div>
-            <div class="share-via-link-wrapper" style="border-top: none; padding-top: 10px; margin-top: 10px;">
-                <span class="share-via-link-text">View Shared Codes</span>
-                <button class="share-via-link-btn"
-                    onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openMySharesModal(); }"
-                    title="View your shared codes">
-                    <i class="fas fa-history"></i>
-                </button>
-            </div>
-            <div class="share-via-link-wrapper" style="border-top: none; padding-top: 10px; margin-top: 10px;">
-                <span class="share-via-link-text">Received Codes</span>
-                <button class="share-via-link-btn"
-                    onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openReceivedModal(); }"
-                    title="View codes shared with you">
-                    <i class="fas fa-inbox"></i>
-                </button>
-            </div>
-            <div class="modal-actions">
-                <button id="confirmShare" class="btn-primary">Share Code</button>
-                <button id="cancelShare" class="btn-secondary">Cancel</button>
+
+            <!-- Tab Content -->
+            <div class="share-modal-body">
+                <!-- Send to Friend Tab -->
+                <div class="share-tab-content active" data-tab="send">
+                    <div class="share-input-group">
+                        <div class="share-input-wrapper">
+                            <i class="fas fa-at"></i>
+                            <input type="text" id="shareToInput" placeholder="Enter username..." autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="share-friends-section">
+                        <div class="share-friends-header">
+                            <i class="fas fa-users"></i>
+                            <span>Quick Select from Friends</span>
+                        </div>
+                        <div id="shareCodeFriendsList" class="share-friends-grid"></div>
+                    </div>
+
+                    <button id="confirmShare" class="share-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Send Code</span>
+                        <div class="share-btn-glow"></div>
+                    </button>
+                </div>
+
+                <!-- Share Link Tab -->
+                <div class="share-tab-content" data-tab="link">
+                    <div class="share-link-options-grid">
+                        <div class="share-link-card"
+                            onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openShareModal(); }">
+                            <div class="share-link-card-icon"
+                                style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                                <i class="fas fa-link"></i>
+                            </div>
+                            <div class="share-link-card-info">
+                                <h4>Generate Link</h4>
+                                <p>Create a shareable link for your code</p>
+                            </div>
+                            <i class="fas fa-chevron-right share-card-arrow"></i>
+                        </div>
+
+                        <div class="share-link-card"
+                            onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openMySharesModal(); }">
+                            <div class="share-link-card-icon"
+                                style="background: linear-gradient(135deg, #4ade80, #22c55e);">
+                                <i class="fas fa-folder-open"></i>
+                            </div>
+                            <div class="share-link-card-info">
+                                <h4>My Shared Codes</h4>
+                                <p>View and manage codes you've shared</p>
+                            </div>
+                            <i class="fas fa-chevron-right share-card-arrow"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Tab -->
+                <div class="share-tab-content" data-tab="history">
+                    <div class="share-link-options-grid">
+                        <div class="share-link-card"
+                            onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openReceivedModal(); }">
+                            <div class="share-link-card-icon"
+                                style="background: linear-gradient(135deg, #f97316, #fb923c);">
+                                <i class="fas fa-inbox"></i>
+                            </div>
+                            <div class="share-link-card-info">
+                                <h4>Received Codes</h4>
+                                <p>View codes shared with you by others</p>
+                            </div>
+                            <i class="fas fa-chevron-right share-card-arrow"></i>
+                        </div>
+
+                        <div class="share-link-card"
+                            onclick="if(window.codeShareManager) { document.getElementById('shareCodeModal').style.display='none'; window.codeShareManager.openMySharesModal(); }">
+                            <div class="share-link-card-icon"
+                                style="background: linear-gradient(135deg, #3b82f6, #60a5fa);">
+                                <i class="fas fa-clock-rotate-left"></i>
+                            </div>
+                            <div class="share-link-card-info">
+                                <h4>Sent Codes</h4>
+                                <p>Track codes you've sent to friends</p>
+                            </div>
+                            <i class="fas fa-chevron-right share-card-arrow"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1267,6 +1350,32 @@
                 shareCode(recipient);
             }
         };
+
+        // Share Modal Tab Switching
+        document.querySelectorAll('.share-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+
+                // Update active tab
+                document.querySelectorAll('.share-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Update active content
+                document.querySelectorAll('.share-tab-content').forEach(content => {
+                    content.classList.remove('active');
+                    if (content.dataset.tab === tabName) {
+                        content.classList.add('active');
+                    }
+                });
+            });
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('shareCodeModal').addEventListener('click', (e) => {
+            if (e.target.id === 'shareCodeModal') {
+                document.getElementById('shareCodeModal').style.display = 'none';
+            }
+        });
 
         function shareCode(recipient) {
             const code = window.editor ? window.editor.getValue() : '';

@@ -831,13 +831,13 @@
                         const snapshot = await firebase.database().ref('users/' + result.user.uid + '/preferences/ui_mode').once('value');
                         const uiMode = snapshot.val();
                         if (uiMode === 'hypersynq') {
-                            window.location.href = 'nexuscode.html';
+                            window.location.href = 'nexuscode.html' + window.location.search;
                         } else {
-                            window.location.href = 'index.html';
+                            window.location.href = 'index.html' + window.location.search;
                         }
                     } catch (err) {
                         console.error('Error fetching UI preference:', err);
-                        window.location.href = 'index.html'; // Fallback
+                        window.location.href = 'index.html' + window.location.search; // Fallback
                     }
                 } else {
                     if (password.length < 6) {
@@ -845,7 +845,7 @@
                     }
                     const result = await auth.createUserWithEmailAndPassword(email, password);
                     await result.user.updateProfile({ displayName: displayName });
-                    window.location.href = 'index.html'; // New users go to basic mode by default
+                    window.location.href = 'index.html' + window.location.search; // New users go to basic mode by default
                 }
             } catch (error) {
                 let msg = error.message;
@@ -884,13 +884,13 @@
                             const snapshot = await firebase.database().ref('users/' + result.user.uid + '/preferences/ui_mode').once('value');
                             const uiMode = snapshot.val();
                             if (uiMode === 'hypersynq') {
-                                window.location.href = 'nexuscode.html';
+                                window.location.href = 'nexuscode.html' + window.location.search;
                             } else {
-                                window.location.href = 'index.html';
+                                window.location.href = 'index.html' + window.location.search;
                             }
                         } catch (err) {
                             console.error('Error fetching UI preference:', err);
-                            window.location.href = 'index.html'; // Fallback
+                            window.location.href = 'index.html' + window.location.search; // Fallback
                         }
                     }
                 }
@@ -913,13 +913,13 @@
                     const snapshot = await firebase.database().ref('users/' + result.user.uid + '/preferences/ui_mode').once('value');
                     const uiMode = snapshot.val();
                     if (uiMode === 'hypersynq') {
-                        window.location.href = 'nexuscode.html';
+                        window.location.href = 'nexuscode.html' + window.location.search;
                     } else {
-                        window.location.href = 'index.html';
+                        window.location.href = 'index.html' + window.location.search;
                     }
                 } catch (err) {
                     console.error('Error fetching UI preference:', err);
-                    window.location.href = 'index.html'; // Fallback
+                    window.location.href = 'index.html' + window.location.search; // Fallback
                 }
             }
         }).catch((error) => {
@@ -937,14 +937,14 @@
                     .then(snapshot => {
                         const uiMode = snapshot.val();
                         if (uiMode === 'hypersynq') {
-                            window.location.href = 'nexuscode.html';
+                            window.location.href = 'nexuscode.html' + window.location.search;
                         } else {
-                            window.location.href = 'index.html';
+                            window.location.href = 'index.html' + window.location.search;
                         }
                     })
                     .catch(err => {
                         console.error('Error checking auth state preference:', err);
-                        window.location.href = 'index.html';
+                        window.location.href = 'index.html' + window.location.search;
                     });
             }
         });

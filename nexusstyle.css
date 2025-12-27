@@ -3738,6 +3738,7 @@ body {
 .file-tree {
     flex: 1;
     padding: 10px 0;
+    overflow-y: auto;
 }
 
 .tree-item {
@@ -3955,6 +3956,7 @@ body {
     display: none;
     height: 100%;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .sidebar-view.active {

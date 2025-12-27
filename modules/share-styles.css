@@ -1,5 +1,513 @@
 /* Code Share Module Styles - Unique Classes to Avoid Conflicts */
 
+/* ============ REDESIGNED SHARE MODAL ============ */
+
+/* Modal Backdrop Override */
+.share-modal-redesign {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-modal-redesign[style*="block"] {
+    display: flex !important;
+}
+
+/* Modal Container - Using Theme Variables */
+.share-modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    width: 90%;
+    max-width: 520px;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    animation: shareModalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes shareModalSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Modal Header - Using Theme Primary Color */
+.share-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 28px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.share-modal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.share-modal-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: white;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    animation: iconFloat 3s ease-in-out infinite;
+}
+
+@keyframes iconFloat {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-4px);
+    }
+}
+
+.share-modal-title h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+}
+
+.share-modal-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    display: block;
+}
+
+.share-modal-close {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.25s ease;
+}
+
+.share-modal-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    transform: rotate(90deg);
+}
+
+/* Tabs - Theme Compatible */
+.share-modal-tabs {
+    display: flex;
+    padding: 0 20px;
+    background: var(--bg-primary);
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.share-tab {
+    flex: 1;
+    padding: 14px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.25s ease;
+    position: relative;
+    border-radius: 10px 10px 0 0;
+}
+
+.share-tab i {
+    font-size: 14px;
+}
+
+.share-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.share-tab.active {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.share-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    border-radius: 3px 3px 0 0;
+}
+
+/* Tab Content Area */
+.share-modal-body {
+    padding: 24px 28px;
+    min-height: 280px;
+    background: var(--bg-secondary);
+}
+
+.share-tab-content {
+    display: none;
+    animation: tabFadeIn 0.3s ease;
+}
+
+.share-tab-content.active {
+    display: block;
+}
+
+@keyframes tabFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Input Styling - Theme Compatible */
+.share-input-group {
+    margin-bottom: 24px;
+}
+
+.share-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 4px 16px;
+    transition: all 0.3s ease;
+}
+
+.share-input-wrapper:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.15);
+}
+
+.share-input-wrapper i {
+    color: var(--text-secondary);
+    font-size: 16px;
+}
+
+.share-input-wrapper:focus-within i {
+    color: var(--primary-color);
+}
+
+.share-input-wrapper input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 15px;
+    padding: 14px 0;
+    outline: none;
+}
+
+.share-input-wrapper input::placeholder {
+    color: var(--text-secondary);
+}
+
+/* Friends Section */
+.share-friends-section {
+    margin-bottom: 24px;
+}
+
+.share-friends-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.share-friends-header i {
+    font-size: 11px;
+}
+
+.share-friends-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.share-friends-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.share-friends-grid::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    border-radius: 3px;
+}
+
+.share-friends-grid::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 3px;
+    opacity: 0.5;
+}
+
+/* Friend Items in Share Modal */
+.share-friends-grid .friend-item,
+.share-friends-grid .share-friend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.share-friends-grid .friend-item:hover,
+.share-friends-grid .share-friend-item:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+}
+
+.share-friends-grid .friend-item.selected,
+.share-friends-grid .share-friend-item.selected {
+    background: var(--bg-primary);
+    border-color: var(--primary-color);
+    border-width: 2px;
+}
+
+.share-friends-grid .friend-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+}
+
+.share-friends-grid .friend-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Send Button - Theme Compatible */
+.share-send-btn {
+    width: 100%;
+    padding: 16px 24px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.share-send-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.share-send-btn:active {
+    transform: translateY(0);
+}
+
+.share-send-btn i {
+    font-size: 16px;
+    transition: transform 0.3s ease;
+}
+
+.share-send-btn:hover i {
+    transform: translateX(4px);
+}
+
+.share-btn-glow {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent);
+    transition: left 0.5s ease;
+}
+
+.share-send-btn:hover .share-btn-glow {
+    left: 100%;
+}
+
+/* Link Options Cards - Theme Compatible */
+.share-link-options-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.share-link-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.share-link-card:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary-color);
+    transform: translateX(4px);
+}
+
+.share-link-card:hover .share-card-arrow {
+    opacity: 1;
+    transform: translateX(4px);
+}
+
+.share-link-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: white;
+    flex-shrink: 0;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Use primary color gradient when no inline style is set */
+.share-link-card-icon:not([style]) {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+}
+
+.share-link-card-info {
+    flex: 1;
+}
+
+.share-link-card-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.share-link-card-info p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.share-card-arrow {
+    color: var(--text-secondary);
+    font-size: 14px;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+/* Empty State for Friends */
+.share-friends-grid:empty::before {
+    content: 'No friends to show';
+    display: block;
+    text-align: center;
+    padding: 30px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    grid-column: 1 / -1;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 540px) {
+    .share-modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+
+    .share-modal-header {
+        padding: 20px;
+    }
+
+    .share-modal-body {
+        padding: 20px;
+    }
+
+    .share-tab span {
+        display: none;
+    }
+
+    .share-tab i {
+        font-size: 18px;
+    }
+
+    .share-friends-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============ END REDESIGNED SHARE MODAL ============ */
+
 /* Share Link Modal - Unique Classes */
 .share-link-modal {
     display: none;
