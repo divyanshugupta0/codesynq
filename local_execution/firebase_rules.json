@@ -1,0 +1,98 @@
+{
+    "rules": {
+        "users": {
+            ".read": "auth != null && root.child('users').child(auth.uid).child('isAdmin').val() == true",
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid",
+                ".write": "auth != null && auth.uid == $uid",
+                "profilePicture": {
+                    ".read": "auth != null"
+                },
+                "photoURL": {
+                    ".read": "auth != null"
+                },
+                "username": {
+                    ".read": "auth != null"
+                },
+                "displayName": {
+                    ".read": "auth != null"
+                },
+                "status": {
+                    ".read": "auth != null"
+                }
+            }
+        },
+        "usernames": {
+            ".read": "auth != null",
+            "$uid": {
+                ".write": "auth != null && auth.uid == $uid"
+            }
+        },
+        "usernameToUid": {
+            ".read": "auth != null",
+            "$username": {
+                ".write": "auth != null"
+            }
+        },
+        "friends": {
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid",
+                ".write": "auth != null"
+            }
+        },
+        "friendships": {
+            ".read": "auth != null",
+            "$friendshipKey": {
+                ".write": "auth != null"
+            }
+        },
+        "friendRequests": {
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid",
+                "$fromUid": {
+                    ".read": "auth != null && auth.uid == $fromUid",
+                    ".write": "auth != null"
+                }
+            }
+        },
+        "sharedCodes": {
+            ".read": true,
+            "$shareId": {
+                ".read": true,
+                ".write": "auth != null && (!data.exists() || !data.child('authorId').exists() || data.child('authorId').val() === auth.uid || (data.child('expiresAt').exists() && data.child('expiresAt').val() < now) || (newData.child('code').val() === data.child('code').val() && newData.child('authorId').val() === data.child('authorId').val()))"
+            }
+        },
+        "onlineUsers": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+        },
+        "chats": {
+            "$chatId": {
+                ".read": "auth != null",
+                ".write": "auth != null"
+            }
+        },
+        "communities": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+        },
+        "userCommunities": {
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid",
+                ".write": "auth != null"
+            }
+        },
+        "communityChats": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+        },
+        "adminNotifications": {
+            ".read": "auth != null",
+            ".write": "auth != null && root.child('users').child(auth.uid).child('isAdmin').val() == true"
+        },
+        "collab_sessions": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+        }
+    }
+}

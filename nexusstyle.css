@@ -5503,7 +5503,7 @@ input[type=range]:focus {
     gap: 8px !important;
     margin-left: auto !important;
     align-items: center !important;
-    z-index: 9999 !important;
+    z-index: 10 !important;
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;

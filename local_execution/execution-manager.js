@@ -8,10 +8,10 @@ class ExecutionManager {
         this.executionMode = 'auto'; // 'auto', 'local', 'remote'
         this.isLocalServerUp = false;
         this.onExecutionOutput = null; // High-level output handler
+        this.pollFailCount = 0;
 
         // Auto-detect local server
         this.checkLocalStatus();
-        setInterval(() => this.checkLocalStatus(), 5000);
 
         console.log('[ExecutionManager] Initialized');
     }
@@ -22,25 +22,52 @@ class ExecutionManager {
     }
 
     async checkLocalStatus() {
+        // Don't poll if user explicitly wants remote only
+        if (this.executionMode === 'remote') {
+            this.scheduleNextCheck(10000);
+            return;
+        }
+
         try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 1000); // 1s timeout
+
             const res = await fetch(`${this.localClient.serverUrl}/health`, {
                 method: 'GET',
-                cache: 'no-store'
+                cache: 'no-store',
+                signal: controller.signal
             });
+            clearTimeout(id);
+
             const wasUp = this.isLocalServerUp;
             this.isLocalServerUp = res.ok;
+            this.pollFailCount = 0; // Reset fail count on success
 
             if (wasUp !== this.isLocalServerUp) {
                 console.log(`[ExecutionManager] Local service is now ${this.isLocalServerUp ? 'ONLINE' : 'OFFLINE'}`);
             }
         } catch (e) {
             this.isLocalServerUp = false;
+            this.pollFailCount++;
         }
 
         // Update UI status if function exists
         if (typeof window.updateLocalStatusUI === 'function') {
             window.updateLocalStatusUI(this.isLocalServerUp);
         }
+
+        this.scheduleNextCheck();
+    }
+
+    scheduleNextCheck(delay) {
+        // If specific delay not provided, calculate based on failures
+        // Successful/idle: 5s
+        // Failing: start at 5s, max at 60s
+        if (!delay) {
+            delay = Math.min(5000 + (this.pollFailCount * 5000), 60000);
+        }
+
+        setTimeout(() => this.checkLocalStatus(), delay);
     }
 
     async execute(code, language) {

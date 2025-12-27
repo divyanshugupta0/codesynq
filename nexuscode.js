@@ -13,6 +13,11 @@ var editorTabs = [];
 var editorTabs = [];
 var activeTabIndex = 0;
 let activeExecutionMode = null; // 'local' or 'remote'
+let isLivePreviewEnabled = false;
+let previewWindow = null;
+// Firebase Saved Codes List in Explorer
+let savedCodesListenerForExplorer = null;
+let savedFoldersListenerForExplorer = null;
 
 // Auto-save functionality
 function saveEditorState() {
@@ -930,7 +935,8 @@ function setupActivityBar() {
                 'explorer': 'explorerView',
                 'search': 'searchView',
                 'git': 'gitView',
-                'chat': 'chatsView'
+                'chat': 'chatsView',
+                'collaboration': 'collaborationView'
             };
 
             const viewId = viewMapping[btn.dataset.view] || 'explorerView';
@@ -1186,20 +1192,7 @@ function setupUI() {
         restoreEditorContent();
     }
 
-    // Collaboration modal handlers
-    document.getElementById('generateRoomId').addEventListener('click', () => {
-        const newRoomId = generateRoomId();
-        document.getElementById('roomIdInput').value = newRoomId;
-        document.getElementById('shareLink').value = `${window.location.origin}${window.location.pathname}?room=${newRoomId}`;
-    });
 
-    document.getElementById('copyLink').addEventListener('click', copyShareLink);
-    document.getElementById('startCollaboration').addEventListener('click', startCollaboration);
-    document.getElementById('cancelCollaboration').addEventListener('click', () => {
-        document.getElementById('collaborationModal').style.display = 'none';
-    });
-
-    document.getElementById('editModeBtn').addEventListener('click', toggleEditMode);
 
     // Session dropdown handlers
     document.getElementById('sessionInfoBtn').addEventListener('click', (e) => {
@@ -1219,15 +1212,7 @@ function setupUI() {
     document.getElementById('exitSession').addEventListener('click', exitCollaborationSession);
 
     // Chat functionality
-    document.getElementById('sendMessage').addEventListener('click', sendChatMessage);
-    document.getElementById('chatInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            sendChatMessage();
-        }
-    });
 
-    // Video controls
-    setupVideoControls();
 
     // Tab mode functionality
 
@@ -1257,8 +1242,7 @@ function setupUI() {
         }
     });
 
-    // Collaboration toggle
-    setupCollaborationToggle();
+
 
     // Update load folder handler
     document.getElementById('loadFolder').addEventListener('click', loadFolderInTabMode);
@@ -3479,55 +3463,6 @@ function generateRoomId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-function startCollaboration() {
-    const roomId = document.getElementById('roomIdInput').value;
-    const mode = document.getElementById('collaborationMode').value;
-
-    isCollaborating = true;
-    isHost = true;
-    currentEditMode = mode;
-    window.currentRoom = roomId;
-
-    // Save collaboration session to Firebase
-    saveCollaborationSession(roomId, mode, true);
-
-    // Update UI to show collaborating state
-    document.getElementById('collaborateBtn').style.display = 'none';
-    document.getElementById('collaboratingLabel').style.display = 'inline-block';
-
-    // Update dropdown info
-    document.getElementById('dropdownRoomId').textContent = roomId;
-    document.getElementById('dropdownMode').textContent = mode;
-    document.getElementById('dropdownShareLink').value = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
-
-    // Show collaboration toggle button (panel hidden by default)
-    const toggleBtn = document.getElementById('collaborationToggle');
-    toggleBtn.style.display = 'flex';
-    toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-    toggleBtn.classList.remove('panel-open');
-    document.getElementById('roomStatus').textContent = `Host - ${roomId}`;
-    document.getElementById('roomStatus').className = 'status-indicator connected';
-
-    // Update editor permissions to show host controls
-    setTimeout(() => updateEditorPermissions(), 100);
-
-    // Join room
-    if (window.socket && window.socket.connected) {
-        window.socket.emit('join-room', {
-            roomId,
-            user: {
-                ...window.currentUser,
-                username: window.currentUser.displayName,
-                profilePic: window.currentUser.photoURL,
-                isHost: true
-            }
-        });
-    }
-
-    document.getElementById('collaborationModal').style.display = 'none';
-    showNotification('Collaboration session started!');
-}
-
 function copyShareLink() {
     const link = document.getElementById('shareLink').value;
     navigator.clipboard.writeText(link).then(() => {
@@ -4348,8 +4283,7 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
-let isLivePreviewEnabled = false;
-let previewWindow = null;
+
 
 function updateLivePreviewVisibility(language) {
     const btn = document.getElementById('livePreview');
@@ -5089,81 +5023,11 @@ function generateUserId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function sendChatMessage() {
-    const input = document.getElementById('chatInput');
-    const message = input.value.trim();
 
-    if (!message || !window.socket || !window.currentRoom || !window.currentUser) return;
 
-    window.socket.emit('chat-message', {
-        roomId: window.currentRoom,
-        message: message,
-        user: {
-            uid: window.currentUser.uid,
-            username: window.currentUser.displayName,
-            profilePic: window.currentUser.photoURL
-        }
-    });
 
-    input.value = '';
-}
 
-function displayChatMessage(data) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message';
 
-    const time = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    messageDiv.innerHTML = `
-        <div class="message-header">
-            <strong>${data.user}</strong> • ${time}
-        </div>
-        <div class="message-content">${data.message}</div>
-    `;
-
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    // Switch to chat panel if not already active
-    if (!document.getElementById('chat-panel').classList.contains('active')) {
-        switchPanel('chat');
-    }
-}
-
-function updateUserList(users) {
-    const userList = document.getElementById('userList');
-    const userCount = document.getElementById('userCount');
-
-    userList.innerHTML = '';
-    userCount.textContent = users.length;
-
-    users.forEach(user => {
-        const userItem = document.createElement('div');
-        userItem.className = 'user-item';
-
-        if (user.profilePic) {
-            userItem.innerHTML = `
-                <img src="${user.profilePic}" alt="${user.username}" class="user-avatar">
-                <div class="user-info">
-                    <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
-                    <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
-                </div>
-            `;
-        } else {
-            const avatar = createCustomAvatar(user.username, 36);
-            userItem.appendChild(avatar);
-            userItem.innerHTML += `
-                <div class="user-info">
-                    <div class="user-name">${user.username}${user.isHost ? ' (Host)' : ''}</div>
-                    <div class="user-status">${user.isHost ? 'Host' : 'Participant'}</div>
-                </div>
-            `;
-        }
-
-        userList.appendChild(userItem);
-    });
-}
 
 function loadUserPreferences() {
     if (!window.currentUser || typeof database === 'undefined') {
@@ -5407,54 +5271,9 @@ function addVideoStream(userId, stream) {
     videoGrid.appendChild(videoContainer);
 }
 
-// Video controls
-function setupVideoControls() {
-    document.getElementById('toggleVideo').addEventListener('click', () => {
-        if (localStream) {
-            stopVideoCall();
-        } else {
-            startVideoCall();
-        }
-    });
 
-    document.getElementById('toggleAudio').addEventListener('click', () => {
-        if (localStream) {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                const btn = document.getElementById('toggleAudio');
-                btn.innerHTML = audioTrack.enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
-            }
-        }
-    });
-}
 
-function setupCollaborationToggle() {
-    const toggleBtn = document.getElementById('collaborationToggle');
-    const rightPanel = document.getElementById('rightPanel');
-    // Using ide-container as per HTML structure
-    const container = document.querySelector('.ide-container') || document.querySelector('.container');
 
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => {
-            const isVisible = rightPanel.style.display !== 'none';
-
-            if (isVisible) {
-                // Hide panel
-                rightPanel.style.display = 'none';
-                container.classList.remove('collaboration-mode');
-                toggleBtn.classList.remove('panel-open');
-                toggleBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-            } else {
-                // Show panel
-                rightPanel.style.display = 'block';
-                container.classList.add('collaboration-mode');
-                toggleBtn.classList.add('panel-open');
-                toggleBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
-            }
-        });
-    }
-}
 
 function getLocalComplexity(code, language) {
     const patterns = {
@@ -7810,9 +7629,7 @@ function saveFileLocally(name, content, language) {
     updateTempFilesList();
 }
 
-// Firebase Saved Codes List in Explorer
-let savedCodesListenerForExplorer = null;
-let savedFoldersListenerForExplorer = null;
+
 
 function updateSavedCodesList() {
     const list = document.getElementById('savedCodesList');
@@ -8480,6 +8297,7 @@ async function loadGitSettings() {
         if (settingsSection) {
             settingsSection.style.display = 'block';
         }
+        updateGitStatusBar('disconnected', 'Not Configured');
     }
 }
 
@@ -8516,23 +8334,90 @@ function parseGitHubUrl(url) {
 // Update status indicator
 function updateGitStatus(status, message) {
     const indicator = document.getElementById('gitStatusIndicator');
-    if (!indicator) return;
 
-    indicator.className = 'git-status-indicator ' + status;
+    // Update Sidebar Indicator if it exists
+    if (indicator) {
+        indicator.className = 'git-status-indicator ' + status;
 
-    const icons = {
-        connected: 'fa-check-circle',
-        disconnected: 'fa-plug',
-        syncing: 'fa-sync-alt fa-spin',
-        error: 'fa-exclamation-circle'
-    };
+        const icons = {
+            connected: 'fa-check-circle',
+            disconnected: 'fa-plug',
+            syncing: 'fa-sync-alt fa-spin',
+            error: 'fa-exclamation-circle'
+        };
 
-    indicator.innerHTML = `<i class="fas ${icons[status] || 'fa-plug'}"></i><span>${message}</span>`;
+        indicator.innerHTML = `<i class="fas ${icons[status] || 'fa-plug'}"></i><span>${message}</span>`;
+    }
+
+    // Update Bottom Status Bar
+    updateGitStatusBar(status, message);
+}
+
+// Update Status Bar Git Stats
+// Update Status Bar Git Stats
+function updateGitStatusBar(status, message) {
+    const branchName = document.getElementById('gitBranchName');
+    const syncItem = document.getElementById('gitSyncStatusItem');
+    const syncIcon = document.getElementById('gitSyncIcon');
+    const syncText = document.getElementById('gitSyncText');
+
+    // Update branch name
+    if (branchName) {
+        if (window.githubSettingsCache && window.githubSettingsCache.branch) {
+            branchName.textContent = window.githubSettingsCache.branch;
+        } else {
+            const branchInput = document.getElementById('githubBranch');
+            if (branchInput && branchInput.value) {
+                branchName.textContent = branchInput.value;
+            }
+        }
+    }
+
+    if (!syncItem || !syncIcon) return;
+
+    if (status === 'disconnected') {
+        syncItem.style.display = 'none';
+        return;
+    }
+
+    syncItem.style.display = 'flex';
+    syncItem.style.color = 'var(--text-primary)'; // Reset color
+
+    let label = 'GitHub';
+
+    if (status === 'connected') {
+        // Show cloud icon if idle/connected
+        syncIcon.className = 'fas fa-cloud';
+        syncItem.title = 'GitHub Connected: ' + message;
+        label = 'GitHub';
+    } else if (status === 'syncing') {
+        syncIcon.className = 'fas fa-sync-alt fa-spin';
+        syncItem.title = 'Syncing...';
+        label = 'Syncing...';
+    } else if (status === 'error') {
+        syncIcon.className = 'fas fa-exclamation-triangle';
+        syncItem.style.color = '#f14c4c'; // Error color
+        syncItem.title = 'Git Error: ' + message;
+        label = 'Git Error';
+    }
+
+    if (syncText) syncText.textContent = label;
 }
 
 // Test GitHub connection
 window.testGitHubConnection = async function (silent = false) {
-    const settings = await getGitHubSettings();
+    // Prefer inputs over cache to allow correcting invalid credentials
+    let settings = {
+        repoUrl: document.getElementById('githubRepoUrl')?.value?.trim(),
+        token: document.getElementById('githubToken')?.value?.trim(),
+        branch: document.getElementById('githubBranch')?.value?.trim()
+    };
+
+    // If inputs are missing/empty, fall back to stored settings
+    if (!settings.repoUrl || !settings.token) {
+        settings = await getGitHubSettings();
+    }
+
     const settingsSection = document.getElementById('gitSettingsSection');
 
     if (!settings.repoUrl || !settings.token) {
