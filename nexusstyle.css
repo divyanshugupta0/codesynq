@@ -3722,23 +3722,42 @@ body {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    overflow: hidden;
+    transition: width 0.15s ease;
 }
 
 .sidebar-header {
+    position: relative;
+    /* Anchor for absolute actions */
     height: 35px;
-    padding: 0 15px;
+    padding: 0 10px 0 15px;
+    /* adjust padding */
     display: flex;
     align-items: center;
+    justify-content: space-between;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-secondary);
     letter-spacing: 1px;
+    overflow: visible;
+    /* changed from hidden */
+    min-width: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    z-index: 10;
+    background: var(--bg-secondary);
+    /* prevent transparency issues */
 }
 
 .file-tree {
     flex: 1;
     padding: 10px 0;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .tree-item {
@@ -3749,6 +3768,8 @@ body {
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 13px;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .tree-item:hover {
@@ -3764,6 +3785,8 @@ body {
     align-items: center;
     gap: 5px;
     margin-bottom: 5px;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .editor-area {
@@ -4050,6 +4073,38 @@ body {
     box-shadow: 0 4px 15px rgba(var(--primary-color-rgb, 138, 43, 226), 0.4);
 }
 
+.git-header-actions {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 100;
+}
+
+.icon-btn-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: none;
+    background: #3e3e3e !important;
+    /* Force visible color */
+    color: #ffffff !important;
+    /* Force visible color */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.icon-btn-small:hover {
+    background: var(--accent-color);
+    color: white;
+}
+
 #backToChatListBtn {
     background: var(--bg-tertiary) !important;
     color: var(--text-primary) !important;
@@ -4225,8 +4280,8 @@ body {
 
 .sidebar-view {
     width: 100%;
-    min-width: 200px;
-    /* Ensure content doesn't squash immediately */
+    min-width: 0;
+    /* Allow shrinking for proper collapse */
     flex: 1;
 }
 
@@ -4872,4 +4927,615 @@ input[type=range]:focus {
     cursor: pointer;
     font-size: 13px;
     color: var(--text-primary);
+}
+
+/* ==========================================
+   Git Dropdown & Source Control Styles
+   ========================================== */
+
+.git-dropdown {
+    position: relative;
+}
+
+.git-menu {
+    min-width: 220px;
+    padding: 15px;
+}
+
+.git-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.git-section h4 i {
+    color: var(--primary-color);
+}
+
+.git-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.git-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.git-action-btn:hover {
+    background: var(--bg-primary);
+    border-color: var(--primary-color);
+    transform: translateX(3px);
+}
+
+.git-action-btn i {
+    width: 18px;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+#gitPullBtn:hover i {
+    color: #4CAF50;
+}
+
+#gitPushBtn:hover i {
+    color: #2196F3;
+}
+
+#gitSyncBtn:hover i {
+    color: #FF9800;
+}
+
+.git-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.git-status i {
+    font-size: 14px;
+}
+
+/* Search Result Hover Effect */
+.search-result-item:hover {
+    background: var(--bg-secondary) !important;
+    border-left-color: var(--accent-color) !important;
+    transform: translateX(2px);
+}
+
+.search-result-item {
+    transition: all 0.2s ease;
+}
+
+/* ==========================================
+   VS Code Style Search Panel
+   ========================================== */
+
+.vscode-search-container {
+    padding: 0;
+    border-bottom: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.vscode-search-row {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.vscode-search-input-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    margin: 4px 8px;
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 0;
+    /* Allow shrinking */
+}
+
+.vscode-search-input-wrapper:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.vscode-search-input {
+    flex: 1;
+    min-width: 0;
+    /* Allow input to shrink */
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+}
+
+.vscode-search-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.vscode-search-toggles {
+    display: flex;
+    padding-right: 4px;
+    gap: 2px;
+    flex-shrink: 0;
+    /* Don't shrink toggle buttons */
+}
+
+.vscode-toggle-btn {
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.vscode-toggle-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.vscode-toggle-btn.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.vscode-search-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.vscode-search-results {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.vscode-search-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+}
+
+/* Search Result File Group */
+.vscode-search-file {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.vscode-search-file-header {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    cursor: pointer;
+    background: var(--bg-secondary);
+}
+
+.vscode-search-file-header:hover {
+    background: var(--bg-tertiary);
+}
+
+.vscode-search-file-header i {
+    margin-right: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.vscode-search-file-header i.rotated {
+    transform: rotate(90deg);
+}
+
+.vscode-search-file-name {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vscode-search-file-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+.vscode-search-matches {
+    padding-left: 20px;
+}
+
+.vscode-search-match {
+    display: flex;
+    align-items: flex-start;
+    padding: 2px 8px 2px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.vscode-search-match:hover {
+    background: var(--bg-tertiary);
+}
+
+.vscode-search-match-line {
+    min-width: 32px;
+    color: var(--text-secondary);
+    margin-right: 8px;
+    text-align: right;
+}
+
+.vscode-search-match-content {
+    flex: 1;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vscode-search-match-highlight {
+    background: rgba(255, 206, 0, 0.3);
+    color: var(--text-primary);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+/* No Results */
+.vscode-no-results {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* ==========================================
+   Git Sidebar View Styles
+   ========================================== */
+
+.git-sidebar-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.git-sync-section {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.git-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.git-status-indicator i {
+    color: var(--accent-color);
+}
+
+.git-status-indicator.syncing i {
+    animation: spin 1s linear infinite;
+}
+
+.git-status-indicator.error i {
+    color: #ef4444;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.git-actions-section {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.git-sidebar-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.git-sidebar-btn:hover {
+    background: var(--bg-primary);
+    border-color: var(--primary-color);
+}
+
+.git-sidebar-btn i {
+    width: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--primary-color);
+}
+
+.git-sidebar-btn.git-sync-btn {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.git-sidebar-btn.git-sync-btn:hover {
+    filter: brightness(1.1);
+}
+
+.git-sidebar-btn.git-sync-btn i {
+    color: white;
+}
+
+.git-changes-section {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.git-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+}
+
+.git-section-header:hover {
+    background: var(--bg-tertiary);
+}
+
+.git-section-header span:first-of-type {
+    flex: 1;
+}
+
+.git-changes-count {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.git-changes-list {
+    padding-left: 12px;
+}
+
+.git-no-changes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.git-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.git-file-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.git-file-item i {
+    font-size: 11px;
+}
+
+.git-file-item .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.git-file-item .file-status {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+.git-file-item .file-status.modified {
+    color: #e2b93d;
+}
+
+.git-file-item .file-status.added {
+    color: #73c991;
+}
+
+.git-file-item .file-status.deleted {
+    color: #f14c4c;
+}
+
+/* GitHub Settings Styles */
+.git-settings-section {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.git-input-group {
+    margin-bottom: 10px;
+}
+
+.git-input-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.git-input-group label i {
+    font-size: 12px;
+}
+
+.git-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.git-input:focus {
+    border-color: var(--primary-color);
+}
+
+.git-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.git-help-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--primary-color);
+    text-decoration: none;
+    margin-top: 4px;
+}
+
+.git-help-link:hover {
+    text-decoration: underline;
+}
+
+.git-commit-section {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.git-commit-input {
+    font-size: 13px;
+    padding: 8px 10px;
+}
+
+/* Connection Status Colors */
+.git-status-indicator.connected i {
+    color: var(--accent-color);
+}
+
+.git-status-indicator.disconnected i {
+    color: var(--text-secondary);
+}
+
+.git-status-indicator.error i {
+    color: #ef4444;
+}
+
+/* Dedicated Git Header Styles */
+.git-dedicated-header-actions {
+    display: flex !important;
+    gap: 8px !important;
+    margin-left: auto !important;
+    align-items: center !important;
+    z-index: 9999 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+.git-dedicated-icon {
+    width: 28px !important;
+    height: 28px !important;
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.git-dedicated-icon:hover {
+    background-color: var(--accent-color) !important;
+    color: white !important;
+}
+
+.git-dedicated-icon i {
+    display: inline-block !important;
+    font-size: 14px !important;
+    width: auto !important;
+    height: auto !important;
+    line-height: 1 !important;
+    color: inherit !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }

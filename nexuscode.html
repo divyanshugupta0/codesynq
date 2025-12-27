@@ -219,9 +219,15 @@
                 <div class="activity-icons-top">
                     <div class="activity-btn active" id="explorerBtn" title="Explorer" data-view="explorer"><i
                             class="fas fa-copy"></i></div>
-                    <div class="activity-btn" title="Search"><i class="fas fa-search"></i></div>
+                    <div class="activity-btn" id="searchBtn" title="Search" data-view="search"><i
+                            class="fas fa-search"></i></div>
                     <div class="activity-btn" id="friendsBtn" title="Chat" data-view="chat"><i
                             class="fas fa-comment-dots"></i>
+                    </div>
+
+                    <!-- Source Control (Git) - Sidebar View -->
+                    <div class="activity-btn" id="gitBtn" title="Source Control" data-view="git">
+                        <i class="fas fa-code-branch"></i>
                     </div>
 
                     <div class="notifications-dropdown" style="width: 100%;">
@@ -408,6 +414,180 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Search View (VS Code Style) -->
+                <div id="searchView" class="sidebar-view" style="display:none; flex-direction: column; height: 100%;">
+                    <div class="sidebar-header">
+                        <span class="sidebar-title">SEARCH</span>
+                        <div class="header-actions" style="display: flex; gap: 4px;">
+                            <button class="icon-btn-small" id="clearSearchBtn" title="Clear Search Results">
+                                <i class="fas fa-times" style="font-size: 11px;"></i>
+                            </button>
+                            <button class="icon-btn-small" id="refreshSearchBtn" title="Refresh">
+                                <i class="fas fa-sync-alt" style="font-size: 11px;"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search Input Area -->
+                    <div class="vscode-search-container">
+                        <div class="vscode-search-row">
+                            <div class="vscode-search-input-wrapper">
+                                <input type="text" id="globalSearchInput" placeholder="Search"
+                                    class="vscode-search-input">
+                                <div class="vscode-search-toggles">
+                                    <button class="vscode-toggle-btn" id="matchCaseBtn"
+                                        title="Match Case (Alt+C)">Aa</button>
+                                    <button class="vscode-toggle-btn" id="wholeWordBtn"
+                                        title="Match Whole Word (Alt+W)">Ab</button>
+                                    <button class="vscode-toggle-btn" id="regexBtn"
+                                        title="Use Regular Expression (Alt+R)">.*</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="vscode-search-row">
+                            <div class="vscode-search-input-wrapper">
+                                <input type="text" id="replaceInput" placeholder="Replace" class="vscode-search-input"
+                                    style="display: none;">
+                            </div>
+                        </div>
+                        <div class="vscode-search-row" style="padding: 4px 8px;">
+                            <button class="vscode-toggle-btn" id="toggleReplaceBtn" title="Toggle Replace"
+                                style="margin-right: 8px;">
+                                <i class="fas fa-chevron-right"
+                                    style="font-size: 10px; transition: transform 0.2s;"></i>
+                            </button>
+                            <span class="vscode-search-label" id="searchResultsCount"></span>
+                        </div>
+                    </div>
+
+                    <!-- Search Results -->
+                    <div id="searchResults" class="vscode-search-results">
+                        <div class="vscode-search-placeholder">
+                            <i class="fas fa-search" style="font-size: 32px; opacity: 0.3; margin-bottom: 10px;"></i>
+                            <p>Search across your files</p>
+                            <p style="font-size: 11px; opacity: 0.7;">Type to search, Enter to confirm</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Source Control (Git) View -->
+                <div id="gitView" class="sidebar-view" style="display:none; flex-direction: column; height: 100%;">
+                    <div class="sidebar-header" style="overflow: visible;">
+                        <span class="sidebar-title">SOURCE CONTROL</span>
+                        <div class="git-dedicated-header-actions">
+                            <button class="git-dedicated-icon" id="gitEditBtn" title="Edit Connection Settings"
+                                onclick="toggleGitSettings()">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="git-dedicated-icon" id="gitRefreshBtn" title="Refresh Files"
+                                onclick="gitRefresh()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Git Status Section -->
+                    <div class="git-sidebar-container">
+                        <!-- GitHub Connection Status -->
+                        <div class="git-sync-section">
+                            <div class="git-status-indicator" id="gitStatusIndicator">
+                                <i class="fas fa-plug"></i>
+                                <span>Not Connected</span>
+                            </div>
+                        </div>
+
+                        <!-- GitHub Settings (Collapsible) -->
+                        <div class="git-settings-section" id="gitSettingsSection" style="display: none;">
+                            <div class="git-input-group">
+                                <label for="githubRepoUrl">
+                                    <i class="fab fa-github"></i> Repository URL
+                                </label>
+                                <input type="text" id="githubRepoUrl" placeholder="https://github.com/user/repo"
+                                    class="git-input">
+                            </div>
+                            <div class="git-input-group">
+                                <label for="githubToken">
+                                    <i class="fas fa-key"></i> Personal Access Token
+                                </label>
+                                <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx"
+                                    class="git-input">
+                                <a href="https://github.com/settings/tokens/new" target="_blank" class="git-help-link">
+                                    <i class="fas fa-external-link-alt"></i> Generate Token
+                                </a>
+                            </div>
+                            <div class="git-input-group">
+                                <label for="githubBranch">
+                                    <i class="fas fa-code-branch"></i> Branch
+                                </label>
+                                <select id="githubBranch" class="git-input"
+                                    style="background: var(--bg-tertiary); color: var(--text-primary);">
+                                    <option value="main">main</option>
+                                    <option value="master">master</option>
+                                </select>
+                            </div>
+                            <button class="git-sidebar-btn" onclick="testGitHubConnection()"
+                                style="background: var(--primary-color); color: white;">
+                                <i class="fas fa-plug"></i>
+                                <span>Connect</span>
+                            </button>
+                        </div>
+
+                        <!-- Commit Message -->
+                        <div class="git-commit-section">
+                            <div class="git-input-group">
+                                <input type="text" id="commitMessage" placeholder="Commit message..."
+                                    class="git-input git-commit-input">
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="git-actions-section">
+                            <button class="git-sidebar-btn" onclick="gitPull()">
+                                <i class="fas fa-cloud-download-alt"></i>
+                                <span>Pull from GitHub</span>
+                            </button>
+                            <button class="git-sidebar-btn" onclick="gitPush()">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <span>Push to GitHub</span>
+                            </button>
+                            <button class="git-sidebar-btn git-sync-btn" onclick="gitSync()">
+                                <i class="fas fa-sync-alt"></i>
+                                <span>Sync</span>
+                            </button>
+                        </div>
+
+                        <!-- Repository Files Section -->
+                        <div class="git-changes-section">
+                            <div class="git-section-header" onclick="toggleGitSection(this)">
+                                <i class="fas fa-chevron-down rotated" style="font-size: 10px;"></i>
+                                <span>Repository Files</span>
+                                <span class="git-changes-count" id="gitRepoFilesCount">0</span>
+                            </div>
+                            <div class="git-changes-list" id="gitRepoFilesList">
+                                <p style="font-size: 12px; color: var(--text-secondary); padding: 10px;">
+                                    Connect to GitHub to see files
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Staged Changes Section -->
+                        <div class="git-changes-section">
+                            <div class="git-section-header" onclick="toggleGitSection(this)">
+                                <i class="fas fa-chevron-down rotated" style="font-size: 10px;"></i>
+                                <span>Changes to Push</span>
+                                <span class="git-changes-count" id="gitChangesCount">0</span>
+                            </div>
+                            <div class="git-changes-list" id="gitChangesList">
+                                <div class="git-no-changes">
+                                    <i class="fas fa-check" style="color: var(--accent-color);"></i>
+                                    <span>No pending changes</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
 
                 <!-- Chat Lists View -->
                 <div id="chatsView" class="sidebar-view" style="display:none; flex-direction: column; height: 100%;">

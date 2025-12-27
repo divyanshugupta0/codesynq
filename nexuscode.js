@@ -91,6 +91,7 @@ function setupAutoSave() {
 
     editor.onDidChangeModelContent(() => {
         saveEditorState();
+        if (typeof updateGitChangesUI === 'function') updateGitChangesUI();
     });
 
     document.getElementById('languageSelect').addEventListener('change', () => {
@@ -924,8 +925,15 @@ function setupActivityBar() {
                 view.classList.remove('active');
             });
 
-            // Show target
-            const viewId = btn.dataset.view === 'explorer' ? 'explorerView' : 'chatsView';
+            // Map data-view to view element IDs
+            const viewMapping = {
+                'explorer': 'explorerView',
+                'search': 'searchView',
+                'git': 'gitView',
+                'chat': 'chatsView'
+            };
+
+            const viewId = viewMapping[btn.dataset.view] || 'explorerView';
             const targetView = document.getElementById(viewId);
             if (targetView) {
                 targetView.style.display = btn.dataset.view === 'explorer' ? 'block' : 'flex';
@@ -935,6 +943,10 @@ function setupActivityBar() {
             // Special handling
             if (btn.dataset.view === 'chat') {
                 loadFriendsList();
+            }
+            if (btn.dataset.view === 'search') {
+                const searchInput = document.getElementById('globalSearchInput');
+                if (searchInput) searchInput.focus();
             }
         });
     });
@@ -8107,12 +8119,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (resizer && sidebar) {
         let isResizing = false;
+        const MIN_WIDTH = 170;      // Minimum visible width
+        const SNAP_THRESHOLD = 120; // Below this, snap to close
+        const DEFAULT_WIDTH = 250;  // Default width
+        const MAX_WIDTH = 500;      // Maximum width
 
         resizer.addEventListener('mousedown', (e) => {
             isResizing = true;
             resizer.classList.add('active');
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
+            // Disable transition during resize for responsiveness
+            sidebar.style.transition = 'none';
             e.preventDefault();
         });
 
@@ -8124,15 +8142,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let newWidth = e.clientX - offset;
 
-            // Constraints
-            if (newWidth < 50) newWidth = 0; // Snap close
-            else if (newWidth < 150) newWidth = 150; // Min width
-            if (newWidth > 600) newWidth = 600; // Max width
-
-            if (newWidth === 0) {
+            // VS Code-like behavior:
+            // - If below snap threshold, collapse completely
+            // - Otherwise, enforce min width
+            if (newWidth < SNAP_THRESHOLD) {
+                // Snap to closed
                 sidebar.classList.add('collapsed');
+                sidebar.style.width = '0px';
             } else {
                 sidebar.classList.remove('collapsed');
+                // Enforce min and max widths
+                if (newWidth < MIN_WIDTH) newWidth = MIN_WIDTH;
+                if (newWidth > MAX_WIDTH) newWidth = MAX_WIDTH;
+
                 document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
                 sidebar.style.width = newWidth + 'px';
             }
@@ -8144,6 +8166,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 resizer.classList.remove('active');
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
+                // Restore transition for button clicks
+                sidebar.style.transition = '';
 
                 if (sidebar.classList.contains('collapsed')) {
                     const btns = document.querySelectorAll('.activity-btn[data-view]');
@@ -8285,3 +8309,767 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+// ==========================================
+// Source Control & Search Functions
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Search functionality - VS Code style
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    const matchCaseBtn = document.getElementById('matchCaseBtn');
+    const wholeWordBtn = document.getElementById('wholeWordBtn');
+    const regexBtn = document.getElementById('regexBtn');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const refreshSearchBtn = document.getElementById('refreshSearchBtn');
+    const toggleReplaceBtn = document.getElementById('toggleReplaceBtn');
+
+    // Toggle button handlers
+    [matchCaseBtn, wholeWordBtn, regexBtn].forEach(btn => {
+        if (btn) {
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('active');
+                if (globalSearchInput && globalSearchInput.value.trim()) {
+                    performSearch();
+                }
+            });
+        }
+    });
+
+    // Search input
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+        // Also search on input with debounce
+        let searchTimeout;
+        globalSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (globalSearchInput.value.trim()) {
+                    performSearch();
+                }
+            }, 300);
+        });
+    }
+
+    // Clear search
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            if (globalSearchInput) globalSearchInput.value = '';
+            const resultsDiv = document.getElementById('searchResults');
+            if (resultsDiv) {
+                resultsDiv.innerHTML = `
+                    <div class="vscode-search-placeholder">
+                        <i class="fas fa-search" style="font-size: 32px; opacity: 0.3; margin-bottom: 10px;"></i>
+                        <p>Search across your files</p>
+                        <p style="font-size: 11px; opacity: 0.7;">Type to search, Enter to confirm</p>
+                    </div>`;
+            }
+            const countLabel = document.getElementById('searchResultsCount');
+            if (countLabel) countLabel.textContent = '';
+        });
+    }
+
+    // Refresh search
+    if (refreshSearchBtn) {
+        refreshSearchBtn.addEventListener('click', () => {
+            if (globalSearchInput && globalSearchInput.value.trim()) {
+                performSearch();
+            }
+        });
+    }
+
+    // Toggle replace
+    if (toggleReplaceBtn) {
+        toggleReplaceBtn.addEventListener('click', () => {
+            const replaceInput = document.getElementById('replaceInput');
+            const chevron = toggleReplaceBtn.querySelector('i');
+            if (replaceInput) {
+                const isHidden = replaceInput.style.display === 'none';
+                replaceInput.style.display = isHidden ? 'block' : 'none';
+                if (chevron) {
+                    chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+                }
+            }
+        });
+    }
+});
+
+// ==========================================
+// GitHub Integration Functions
+// ==========================================
+
+// GitHub settings - cached locally, synced with Firebase
+let githubSettingsCache = {};
+
+async function getGitHubSettings() {
+    // Return cache if available
+    if (githubSettingsCache.repoUrl) {
+        return githubSettingsCache;
+    }
+
+    // Try to load from Firebase if logged in
+    if (window.currentUser) {
+        try {
+            const snapshot = await database.ref(`users/${window.currentUser.uid}/githubSettings`).once('value');
+            const settings = snapshot.val();
+            if (settings) {
+                githubSettingsCache = settings;
+                return settings;
+            }
+        } catch (e) {
+            console.error('Failed to load GitHub settings from Firebase:', e);
+        }
+    }
+
+    // Fallback to localStorage for backward compatibility
+    try {
+        const settings = localStorage.getItem('codesynq_github_settings');
+        if (settings) {
+            githubSettingsCache = JSON.parse(settings);
+            return githubSettingsCache;
+        }
+    } catch (e) { }
+
+    return {};
+}
+
+async function saveGitSettings() {
+    const settings = {
+        repoUrl: document.getElementById('githubRepoUrl')?.value || '',
+        token: document.getElementById('githubToken')?.value || '',
+        branch: document.getElementById('githubBranch')?.value || 'main'
+    };
+
+    githubSettingsCache = settings;
+
+    // Save to localStorage as backup
+    localStorage.setItem('codesynq_github_settings', JSON.stringify(settings));
+
+    // Save to Firebase if logged in
+    if (window.currentUser) {
+        try {
+            await database.ref(`users/${window.currentUser.uid}/githubSettings`).set(settings);
+        } catch (e) {
+            console.error('Failed to save GitHub settings to Firebase:', e);
+        }
+    }
+}
+
+async function loadGitSettings() {
+    const settings = await getGitHubSettings();
+    const repoInput = document.getElementById('githubRepoUrl');
+    const tokenInput = document.getElementById('githubToken');
+    const branchInput = document.getElementById('githubBranch');
+    const settingsSection = document.getElementById('gitSettingsSection');
+
+    if (repoInput) repoInput.value = settings.repoUrl || '';
+    if (tokenInput) tokenInput.value = settings.token || '';
+    if (branchInput) branchInput.value = settings.branch || 'main';
+
+    // Auto-connect if settings exist
+    if (settings.repoUrl && settings.token) {
+        const connected = await testGitHubConnection(true);
+        if (connected && settingsSection) {
+            // Hide settings after successful auto-connect
+            settingsSection.style.display = 'none';
+        }
+    } else {
+        // Show settings if not configured
+        if (settingsSection) {
+            settingsSection.style.display = 'block';
+        }
+    }
+}
+
+// Toggle settings visibility
+window.toggleGitSettings = function () {
+    const section = document.getElementById('gitSettingsSection');
+    if (section) {
+        section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    }
+};
+
+// Toggle section collapse
+window.toggleGitSection = function (header) {
+    const chevron = header.querySelector('i');
+    const list = header.nextElementSibling;
+    if (list && chevron) {
+        const isExpanded = list.style.display !== 'none';
+        list.style.display = isExpanded ? 'none' : 'block';
+        chevron.classList.toggle('rotated', !isExpanded);
+    }
+};
+
+// Parse GitHub URL to get owner and repo
+function parseGitHubUrl(url) {
+    try {
+        const match = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/);
+        if (match) {
+            return { owner: match[1], repo: match[2].replace('.git', '') };
+        }
+    } catch (e) { }
+    return null;
+}
+
+// Update status indicator
+function updateGitStatus(status, message) {
+    const indicator = document.getElementById('gitStatusIndicator');
+    if (!indicator) return;
+
+    indicator.className = 'git-status-indicator ' + status;
+
+    const icons = {
+        connected: 'fa-check-circle',
+        disconnected: 'fa-plug',
+        syncing: 'fa-sync-alt fa-spin',
+        error: 'fa-exclamation-circle'
+    };
+
+    indicator.innerHTML = `<i class="fas ${icons[status] || 'fa-plug'}"></i><span>${message}</span>`;
+}
+
+// Test GitHub connection
+window.testGitHubConnection = async function (silent = false) {
+    const settings = await getGitHubSettings();
+    const settingsSection = document.getElementById('gitSettingsSection');
+
+    if (!settings.repoUrl || !settings.token) {
+        if (!silent) showNotification('Please enter repository URL and token', 'error');
+        updateGitStatus('disconnected', 'Not Connected');
+        return false;
+    }
+
+    const parsed = parseGitHubUrl(settings.repoUrl);
+    if (!parsed) {
+        if (!silent) showNotification('Invalid GitHub repository URL', 'error');
+        updateGitStatus('error', 'Invalid URL');
+        return false;
+    }
+
+    updateGitStatus('syncing', 'Connecting...');
+
+    try {
+        const response = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
+            headers: {
+                'Authorization': `token ${settings.token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+
+        if (response.ok) {
+            const repo = await response.json();
+            updateGitStatus('connected', `${repo.full_name}`);
+            if (!silent) showNotification(`Connected to ${repo.full_name}`, 'success');
+
+            // Hide settings panel after successful connection
+            if (settingsSection) {
+                settingsSection.style.display = 'none';
+            }
+
+            // Fetch GitHub branches
+            async function fetchGitHubBranches(settings) {
+                if (!settings || !settings.token || !settings.repoUrl) return;
+                const parsed = parseGitHubUrl(settings.repoUrl);
+                if (!parsed) return;
+
+                try {
+                    const response = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/branches`, {
+                        headers: {
+                            'Authorization': `token ${settings.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const branches = await response.json();
+                        const select = document.getElementById('githubBranch');
+                        if (select) {
+                            const currentVal = select.value || settings.branch || 'main';
+                            select.innerHTML = branches.map(b =>
+                                `<option value="${b.name}" ${b.name === currentVal ? 'selected' : ''}>${b.name}</option>`
+                            ).join('');
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch branches:', e);
+                }
+            }
+
+            // Save settings to Firebase after successful connection
+            await saveGitSettings();
+
+            // Fetch branches
+            await fetchGitHubBranches(settings);
+
+            return true;
+        } else if (response.status === 401) {
+            updateGitStatus('error', 'Invalid Token');
+            if (!silent) showNotification('Invalid or expired GitHub token', 'error');
+        } else if (response.status === 404) {
+            updateGitStatus('error', 'Repo Not Found');
+            if (!silent) showNotification('Repository not found or no access', 'error');
+        } else {
+            updateGitStatus('error', 'Connection Failed');
+            if (!silent) showNotification('Failed to connect to GitHub', 'error');
+        }
+    } catch (error) {
+        console.error('GitHub connection error:', error);
+        updateGitStatus('error', 'Network Error');
+        if (!silent) showNotification('Network error connecting to GitHub', 'error');
+    }
+    return false;
+};
+
+// Refresh/reload repo files
+window.gitRefresh = async function () {
+    await gitPull();
+};
+
+// Git Pull - Fetch files from GitHub repo
+window.gitPull = async function () {
+    const settings = await getGitHubSettings();
+    const parsed = parseGitHubUrl(settings.repoUrl);
+
+    if (!parsed || !settings.token) {
+        showNotification('Please configure GitHub settings first', 'error');
+        toggleGitSettings();
+        return;
+    }
+
+    updateGitStatus('syncing', 'Pulling...');
+
+    try {
+        // Get repository contents
+        const response = await fetch(
+            `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents?ref=${settings.branch || 'main'}`,
+            {
+                headers: {
+                    'Authorization': `token ${settings.token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`GitHub API error: ${response.status}`);
+        }
+
+        const files = await response.json();
+        const codeFiles = files.filter(f => f.type === 'file' && /\.(js|py|html|css|json|md|txt|java|c|cpp|rb|go|rs|php|ts|jsx|tsx|sql|xml|yaml|yml)$/i.test(f.name));
+
+        // Update file list
+        const filesList = document.getElementById('gitRepoFilesList');
+        const filesCount = document.getElementById('gitRepoFilesCount');
+
+        if (filesCount) filesCount.textContent = codeFiles.length;
+
+        if (filesList) {
+            if (codeFiles.length === 0) {
+                filesList.innerHTML = '<p style="font-size: 12px; color: var(--text-secondary); padding: 10px;">No code files found in repository</p>';
+            } else {
+                filesList.innerHTML = codeFiles.map(file => `
+                    <div class="git-file-item" onclick="loadGitHubFile('${file.path}', '${file.sha}')">
+                        <i class="fas fa-file-code" style="color: var(--primary-color);"></i>
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-status" style="color: var(--text-secondary); font-size: 10px;">${formatFileSize(file.size)}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        updateGitStatus('connected', `${codeFiles.length} files`);
+        showNotification(`Loaded ${codeFiles.length} files from ${parsed.repo}`, 'success');
+
+    } catch (error) {
+        console.error('Git pull error:', error);
+        updateGitStatus('error', 'Pull Failed');
+        showNotification('Failed to pull from GitHub: ' + error.message, 'error');
+    }
+};
+
+// Load a specific file from GitHub and open in editor
+window.loadGitHubFile = async function (path, sha) {
+    const settings = await getGitHubSettings();
+    const parsed = parseGitHubUrl(settings.repoUrl);
+
+    if (!parsed || !settings.token) return;
+
+    try {
+        updateGitStatus('syncing', 'Loading...');
+
+        const response = await fetch(
+            `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${path}?ref=${settings.branch || 'main'}`,
+            {
+                headers: {
+                    'Authorization': `token ${settings.token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            }
+        );
+
+        if (!response.ok) throw new Error('Failed to fetch file');
+
+        const file = await response.json();
+
+        // Decode Base64 content with proper UTF-8 handling
+        const content = decodeURIComponent(escape(atob(file.content.replace(/\n/g, ''))));
+
+        // Get file extension and map to language
+        const ext = path.split('.').pop().toLowerCase();
+        const langMap = {
+            js: 'javascript', ts: 'typescript', py: 'python', java: 'java',
+            html: 'html', css: 'css', json: 'json', md: 'markdown',
+            c: 'c', cpp: 'cpp', rb: 'ruby', go: 'go', rs: 'rust', php: 'php',
+            sql: 'sql', xml: 'xml', yaml: 'yaml', yml: 'yaml', txt: 'plaintext'
+        };
+
+        // Open file in editor
+        if (typeof addTab === 'function') {
+            const newTab = addTab(file.name, content, langMap[ext] || 'plaintext');
+
+            // Explicitly set language for Monaco editor
+            newTab.language = langMap[ext] || 'plaintext';
+
+            // Store SHA and path for later push
+            newTab.githubSha = sha;
+            newTab.githubPath = path;
+            newTab.originalContent = content; // For change tracking
+
+            // Re-render tabs and switch to the new one
+            renderTabs();
+            switchToTab(editorTabs.length - 1);
+
+            updateGitChangesUI(); // Update UI immediately
+
+            updateGitStatus('connected', `Opened: ${file.name}`);
+            showNotification(`Opened ${file.name}`, 'success');
+        }
+
+    } catch (error) {
+        console.error('Load file error:', error);
+        updateGitStatus('error', 'Load Failed');
+        showNotification('Failed to load file: ' + error.message, 'error');
+    }
+};
+
+// Update Git Changes UI
+function updateGitChangesUI() {
+    const changesList = document.getElementById('gitChangesList');
+    const changesCount = document.getElementById('gitChangesCount');
+
+    if (!changesList || !changesCount) return;
+
+    const changedTabs = editorTabs.filter(tab => {
+        if (!tab.githubSha || typeof tab.originalContent === 'undefined') return false;
+        return tab.content !== tab.originalContent;
+    });
+
+    changesCount.textContent = changedTabs.length;
+
+    if (changedTabs.length === 0) {
+        changesList.innerHTML = `
+            <div class="git-no-changes">
+                <i class="fas fa-check" style="color: var(--accent-color);"></i>
+                <span>No pending changes</span>
+            </div>
+        `;
+    } else {
+        changesList.innerHTML = changedTabs.map((tab) => `
+            <div class="git-file-item" onclick="switchToTab(${editorTabs.indexOf(tab)})">
+                <span class="file-status modified">M</span>
+                <span class="file-name">${tab.name}</span>
+                <span class="file-path" style="font-size: 9px; opacity: 0.7; margin-left: auto;">${tab.githubPath}</span>
+            </div>
+        `).join('');
+    }
+}
+
+// Git Push - Push current file to GitHub
+window.gitPush = async function () {
+    const settings = await getGitHubSettings();
+    const parsed = parseGitHubUrl(settings.repoUrl);
+
+    if (!parsed || !settings.token) {
+        showNotification('Please configure GitHub settings first', 'error');
+        toggleGitSettings();
+        return;
+    }
+
+    if (!editor || !editorTabs || editorTabs.length === 0) {
+        showNotification('No file to push', 'info');
+        return;
+    }
+
+    const currentTab = editorTabs[activeTabIndex];
+    if (!currentTab) {
+        showNotification('No active file', 'error');
+        return;
+    }
+
+    const commitMessage = document.getElementById('commitMessage')?.value || `Update ${currentTab.name}`;
+
+    updateGitStatus('syncing', 'Pushing...');
+
+    try {
+        const content = editor.getValue();
+        const path = currentTab.githubPath || currentTab.name;
+
+        // Check if file exists to get SHA
+        let sha = currentTab.githubSha;
+        if (!sha) {
+            try {
+                const checkResponse = await fetch(
+                    `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${path}?ref=${settings.branch || 'main'}`,
+                    {
+                        headers: {
+                            'Authorization': `token ${settings.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    }
+                );
+                if (checkResponse.ok) {
+                    const existingFile = await checkResponse.json();
+                    sha = existingFile.sha;
+                }
+            } catch (e) {
+                // File doesn't exist, will create new
+            }
+        }
+
+        // Create or update file
+        const body = {
+            message: commitMessage,
+            content: btoa(unescape(encodeURIComponent(content))), // Encode to Base64
+            branch: settings.branch || 'main'
+        };
+
+        if (sha) {
+            body.sha = sha; // Required for updating existing files
+        }
+
+        const response = await fetch(
+            `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${path}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${settings.token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Push failed');
+        }
+
+        const result = await response.json();
+
+        // Update SHA for future updates
+        currentTab.githubSha = result.content.sha;
+        currentTab.originalContent = currentTab.content; // Reset change tracking
+        updateGitChangesUI();
+
+        // Clear commit message
+        const commitInput = document.getElementById('commitMessage');
+        if (commitInput) commitInput.value = '';
+
+        updateGitStatus('connected', 'Pushed!');
+        showNotification('Pushed to GitHub successfully', 'success');
+
+        // Refresh file list
+        setTimeout(() => gitPull(), 1000);
+
+    } catch (error) {
+        console.error('Git push error:', error);
+        updateGitStatus('error', 'Push Failed');
+        showNotification('Failed to push: ' + error.message, 'error');
+    }
+};
+
+// Git Sync - Pull then Push
+window.gitSync = async function () {
+    await gitPull();
+    // Note: We don't auto-push on sync to prevent accidental overwrites
+    showNotification('Synced! Review changes before pushing.', 'success');
+};
+
+// Helper function to format file size
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Load settings on page load
+document.addEventListener('DOMContentLoaded', loadGitSettings);
+
+// Search functionality
+function performSearch() {
+    const searchInput = document.getElementById('globalSearchInput');
+    const matchCaseBtn = document.getElementById('matchCaseBtn');
+    const wholeWordBtn = document.getElementById('wholeWordBtn');
+    const regexBtn = document.getElementById('regexBtn');
+
+    const matchCase = matchCaseBtn?.classList.contains('active') || false;
+    const wholeWord = wholeWordBtn?.classList.contains('active') || false;
+    const useRegex = regexBtn?.classList.contains('active') || false;
+    const resultsDiv = document.getElementById('searchResults');
+    const resultsCountLabel = document.getElementById('searchResultsCount');
+
+    if (!searchInput || !resultsDiv) return;
+
+    const query = searchInput.value.trim();
+    if (!query) {
+        resultsDiv.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; text-align: center;">Enter a search term</p>';
+        return;
+    }
+
+    resultsDiv.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Searching...</p>';
+
+    const results = [];
+
+    // Search in current editor content
+    if (editor) {
+        const code = editor.getValue();
+        const lines = code.split('\n');
+
+        lines.forEach((line, index) => {
+            let searchLine = matchCase ? line : line.toLowerCase();
+            let searchQuery = matchCase ? query : query.toLowerCase();
+
+            let found = false;
+            if (wholeWord) {
+                const regex = new RegExp(`\\b${escapeRegex(searchQuery)}\\b`, matchCase ? '' : 'i');
+                found = regex.test(line);
+            } else {
+                found = searchLine.includes(searchQuery);
+            }
+
+            if (found) {
+                results.push({
+                    tab: editorTabs[activeTabIndex]?.name || 'Current File',
+                    line: index + 1,
+                    content: line.trim().substring(0, 100)
+                });
+            }
+        });
+    }
+
+    // Search in all tabs
+    if (editorTabs && editorTabs.length > 0) {
+        editorTabs.forEach((tab, tabIndex) => {
+            if (tabIndex === activeTabIndex) return; // Skip current tab (already searched)
+
+            const lines = (tab.content || '').split('\n');
+            lines.forEach((line, lineIndex) => {
+                let searchLine = matchCase ? line : line.toLowerCase();
+                let searchQuery = matchCase ? query : query.toLowerCase();
+
+                let found = false;
+                if (wholeWord) {
+                    const regex = new RegExp(`\\b${escapeRegex(searchQuery)}\\b`, matchCase ? '' : 'i');
+                    found = regex.test(line);
+                } else {
+                    found = searchLine.includes(searchQuery);
+                }
+
+                if (found) {
+                    results.push({
+                        tab: tab.name,
+                        tabIndex: tabIndex,
+                        line: lineIndex + 1,
+                        content: line.trim().substring(0, 100)
+                    });
+                }
+            });
+        });
+    }
+
+    // Display results
+    if (results.length === 0) {
+        if (resultsCountLabel) resultsCountLabel.textContent = 'No results';
+        resultsDiv.innerHTML = `<div class="vscode-no-results">No results found for "${query}"</div>`;
+        return;
+    }
+
+    // Update count label
+    if (resultsCountLabel) {
+        resultsCountLabel.textContent = `${results.length} result${results.length > 1 ? 's' : ''} in ${new Set(results.map(r => r.tab)).size} file${new Set(results.map(r => r.tab)).size > 1 ? 's' : ''}`;
+    }
+
+    // Group by file
+    const groupedResults = {};
+    results.forEach(result => {
+        if (!groupedResults[result.tab]) {
+            groupedResults[result.tab] = [];
+        }
+        groupedResults[result.tab].push(result);
+    });
+
+    resultsDiv.innerHTML = '';
+
+    Object.entries(groupedResults).forEach(([fileName, matches]) => {
+        const fileGroup = document.createElement('div');
+        fileGroup.className = 'vscode-search-file';
+
+        const header = document.createElement('div');
+        header.className = 'vscode-search-file-header';
+        header.innerHTML = `
+            <i class="fas fa-chevron-down rotated"></i>
+            <span class="vscode-search-file-name">${fileName}</span>
+            <span class="vscode-search-file-count">${matches.length}</span>
+        `;
+
+        const matchesList = document.createElement('div');
+        matchesList.className = 'vscode-search-matches';
+
+        matches.forEach(result => {
+            const matchItem = document.createElement('div');
+            matchItem.className = 'vscode-search-match';
+            matchItem.innerHTML = `
+                <span class="vscode-search-match-line">${result.line}</span>
+                <span class="vscode-search-match-content">${highlightMatch(result.content, query, matchCase)}</span>
+            `;
+            matchItem.onclick = () => {
+                if (typeof result.tabIndex !== 'undefined' && typeof switchToTab === 'function') {
+                    switchToTab(result.tabIndex);
+                }
+                setTimeout(() => {
+                    if (editor && typeof editor.revealLineInCenter === 'function') {
+                        editor.revealLineInCenter(result.line);
+                        editor.setPosition({ lineNumber: result.line, column: 1 });
+                        editor.focus();
+                    }
+                }, 100);
+            };
+            matchesList.appendChild(matchItem);
+        });
+
+        // Toggle file group
+        header.onclick = () => {
+            const chevron = header.querySelector('i');
+            const isExpanded = matchesList.style.display !== 'none';
+            matchesList.style.display = isExpanded ? 'none' : 'block';
+            chevron.classList.toggle('rotated', !isExpanded);
+        };
+
+        fileGroup.appendChild(header);
+        fileGroup.appendChild(matchesList);
+        resultsDiv.appendChild(fileGroup);
+    });
+}
+
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightMatch(text, query, matchCase) {
+    const escaped = escapeRegex(query);
+    const regex = new RegExp(`(${escaped})`, matchCase ? 'g' : 'gi');
+    return text.replace(regex, '<span style="background: var(--accent-color); color: white; padding: 0 2px; border-radius: 2px;">$1</span>');
+}
