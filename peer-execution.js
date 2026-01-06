@@ -109,6 +109,12 @@ class PeerExecutionManager {
                 if (window.term) {
                     // Convert newlines to CRLF for xterm if needed, though usually handled by convertEol: true
                     let output = message.data;
+
+                    // Safety check: Ensure output is a string
+                    if (typeof output !== 'string') {
+                        output = String(output || '');
+                    }
+
                     if (output && !output.includes('\r\n') && output.includes('\n')) {
                         output = output.replace(/\n/g, '\r\n');
                     }
