@@ -2844,11 +2844,25 @@ function executeCode() {
     console.log('Code length:', code.length);
     console.log('ExecutionManager available:', !!window.executionManager);
     console.log('Local available:', window.executionManager?.isLocalAvailable);
-    console.log('Peer connected:', window.peerExecution?.isConnectedToHost?.());
+    console.log('PeerExecution available:', !!window.peerExecution);
+    console.log('PeerExecution object:', window.peerExecution);
+
+    // Check peer connection status with detailed logging
+    let peerConnected = false;
+    if (window.peerExecution) {
+        try {
+            peerConnected = window.peerExecution.isConnectedToHost();
+            console.log('Peer isConnectedToHost result:', peerConnected);
+        } catch (e) {
+            console.error('Error checking peer connection:', e);
+        }
+    } else {
+        console.log('window.peerExecution is not defined');
+    }
 
     // PRIORITY 1: Check if connected to peer execution host
     // If connected, route ALL execution through peer connection
-    if (window.peerExecution && window.peerExecution.isConnectedToHost()) {
+    if (peerConnected) {
         console.log('[Runner] Executing via PEER CONNECTION');
         activeExecutionMode = 'peer';
 

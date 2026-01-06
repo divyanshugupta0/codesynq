@@ -788,7 +788,14 @@ class PeerExecutionManager {
     // =========================================================================
 
     isConnectedToHost() {
-        return this.executionChannel && this.executionChannel.readyState === 'open';
+        const channelOpen = this.executionChannel && this.executionChannel.readyState === 'open';
+        const hasHost = !!this.hostConnection;
+        console.log('[PeerExec] isConnectedToHost check:', {
+            channelOpen,
+            hasHost,
+            channelState: this.executionChannel?.readyState
+        });
+        return channelOpen && hasHost;
     }
 
     async executeRemote(code, language) {
