@@ -112,7 +112,16 @@ class PeerExecutionManager {
 
                     // Safety check: Ensure output is a string
                     if (typeof output !== 'string') {
-                        output = String(output || '');
+                        console.warn('[PeerExec] Output is not a string:', output);
+                        if (typeof output === 'object') {
+                            try {
+                                output = JSON.stringify(output);
+                            } catch (e) {
+                                output = String(output);
+                            }
+                        } else {
+                            output = String(output || '');
+                        }
                     }
 
                     if (output && !output.includes('\r\n') && output.includes('\n')) {
