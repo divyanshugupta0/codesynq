@@ -517,12 +517,24 @@ class PeerExecutionManager {
 
         // Create RTCPeerConnection
         const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
         });
 
-        // Create data channel for execution
-        const execChannel = pc.createDataChannel('execution', { ordered: true });
-        this.setupExecutionChannel(execChannel, clientId);
+        // HOST receives the data channel from the CLIENT (who creates it)
+        pc.ondatachannel = (event) => {
+            console.log('[PeerExec] Host received data channel from client');
+            const channel = event.channel;
+            this.setupExecutionChannel(channel, clientId);
+
+            // Update the connected peer with the channel
+            const peer = this.connectedPeers.get(clientId);
+            if (peer) {
+                peer.channel = channel;
+            }
+        };
 
         // Handle ICE candidates
         pc.onicecandidate = (e) => {
@@ -531,36 +543,45 @@ class PeerExecutionManager {
             }
         };
 
+        pc.onconnectionstatechange = () => {
+            console.log('[PeerExec] Host connection state:', pc.connectionState);
+        };
+
         // Set remote description and create answer
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer.sdp));
+            console.log('[PeerExec] Host set remote description');
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            console.log('[PeerExec] Host created and set answer');
 
             // Send answer back
             await this.sharingRef.child(`answers/${clientId}`).set({
                 sdp: pc.localDescription.toJSON(),
                 hostName: window.currentUser?.displayName || 'Host'
             });
+            console.log('[PeerExec] Host sent answer to client');
 
             // Listen for client ICE candidates
             this.sharingRef.child(`ice_client/${clientId}`).on('child_added', async (snap) => {
                 try {
                     await pc.addIceCandidate(new RTCIceCandidate(snap.val()));
+                    console.log('[PeerExec] Host added client ICE candidate');
                 } catch (e) {
-                    console.error('ICE error:', e);
+                    console.error('[PeerExec] ICE error:', e);
                 }
             });
 
             this.connectedPeers.set(clientId, {
                 connection: pc,
-                channel: execChannel,
+                channel: null, // Will be set when ondatachannel fires
                 name: offer.clientName || 'User'
             });
 
             this.updateClientsList();
         } catch (error) {
-            console.error('Failed to handle connection:', error);
+            console.error('[PeerExec] Failed to handle connection:', error);
         }
     }
 
@@ -663,15 +684,64 @@ class PeerExecutionManager {
             }
 
             const hostData = snapshot.val();
+            console.log('[PeerExec] Connecting to host:', hostData.hostName);
 
             // Create RTCPeerConnection
             const pc = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
             });
 
-            // Handle data channel
-            pc.ondatachannel = (event) => {
-                this.setupClientChannel(event.channel);
+            // CLIENT creates the data channel BEFORE creating offer
+            // This is the standard WebRTC pattern for reliable data channel
+            const execChannel = pc.createDataChannel('execution', {
+                ordered: true,
+                maxRetransmits: 3
+            });
+            console.log('[PeerExec] Client created data channel');
+
+            // Set up the channel handlers
+            execChannel.onopen = () => {
+                console.log('[PeerExec] Data channel OPEN - connected to host!');
+                this.executionChannel = execChannel;
+                this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host');
+                this.showNotification(`Connected to ${this.hostConnection?.hostName || 'Host'}! Ready for peer execution.`, 'success');
+            };
+
+            execChannel.onclose = () => {
+                console.log('[PeerExec] Data channel closed');
+                this.disconnect();
+            };
+
+            execChannel.onerror = (error) => {
+                console.error('[PeerExec] Data channel error:', error);
+            };
+
+            execChannel.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('[PeerExec] Received message:', message.type);
+
+                if (message.type === 'output') {
+                    // Forward to terminal
+                    if (typeof term !== 'undefined') {
+                        term.write(message.data);
+                    }
+                } else if (message.type === 'result') {
+                    // Handle execution result
+                    if (typeof term !== 'undefined') {
+                        if (message.error) {
+                            term.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                        }
+                        if (typeof message.exitCode !== 'undefined') {
+                            term.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
+                        }
+                    }
+                    if (typeof resetRunButton === 'function') {
+                        resetRunButton();
+                    }
+                }
             };
 
             // ICE handling
@@ -682,9 +752,17 @@ class PeerExecutionManager {
                 }
             };
 
-            // Create offer
+            pc.onconnectionstatechange = () => {
+                console.log('[PeerExec] Connection state:', pc.connectionState);
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+                    this.disconnect();
+                }
+            };
+
+            // Create offer (data channel is already created, so it will be in the offer)
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
+            console.log('[PeerExec] Offer created and set');
 
             // Send offer
             await sharingRef.child(`offers/${clientId}`).set({
@@ -692,42 +770,52 @@ class PeerExecutionManager {
                 clientName: window.currentUser.displayName || window.currentUser.username || 'User',
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
+            console.log('[PeerExec] Offer sent, waiting for answer...');
+
+            // Set hostConnection early so we know we're trying to connect
+            this.hostConnection = {
+                code,
+                connection: pc,
+                hostName: hostData.hostName || 'Host'
+            };
+
+            // Update UI to show connecting state
+            document.getElementById('connectNotConnected').style.display = 'none';
+            document.getElementById('connectIsConnected').style.display = 'block';
+            document.getElementById('connectedHostName').textContent = 'Connecting...';
 
             // Wait for answer
             sharingRef.child(`answers/${clientId}`).on('value', async (snap) => {
                 if (!snap.exists()) return;
 
                 const answer = snap.val();
-                await pc.setRemoteDescription(new RTCSessionDescription(answer.sdp));
+                console.log('[PeerExec] Received answer from host');
 
-                // Listen for host ICE candidates
-                sharingRef.child(`ice_host/${clientId}`).on('child_added', async (iceSnap) => {
-                    try {
-                        await pc.addIceCandidate(new RTCIceCandidate(iceSnap.val()));
-                    } catch (e) {
-                        console.error('ICE error:', e);
-                    }
-                });
+                try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer.sdp));
+                    console.log('[PeerExec] Remote description set');
 
-                this.hostConnection = {
-                    code,
-                    connection: pc,
-                    hostName: hostData.hostName || answer.hostName || 'Host'
-                };
+                    // Update host name
+                    this.hostConnection.hostName = answer.hostName || hostData.hostName || 'Host';
+                    document.getElementById('connectedHostName').textContent = this.hostConnection.hostName;
 
-                // Update UI
-                document.getElementById('connectNotConnected').style.display = 'none';
-                document.getElementById('connectIsConnected').style.display = 'block';
-                document.getElementById('connectedHostName').textContent = this.hostConnection.hostName;
-
-                // Update status bar
-                this.updateStatusBarButton(true, this.hostConnection.hostName);
-
-                this.showNotification(`Connected to ${this.hostConnection.hostName}!`, 'success');
+                    // Listen for host ICE candidates
+                    sharingRef.child(`ice_host/${clientId}`).on('child_added', async (iceSnap) => {
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(iceSnap.val()));
+                            console.log('[PeerExec] Added host ICE candidate');
+                        } catch (e) {
+                            console.error('[PeerExec] ICE error:', e);
+                        }
+                    });
+                } catch (e) {
+                    console.error('[PeerExec] Error setting remote description:', e);
+                    this.showNotification('Connection failed: ' + e.message, 'error');
+                }
             });
 
         } catch (error) {
-            console.error('Connection failed:', error);
+            console.error('[PeerExec] Connection failed:', error);
             this.showNotification('Failed to connect: ' + error.message, 'error');
         }
     }
