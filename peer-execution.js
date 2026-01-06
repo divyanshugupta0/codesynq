@@ -22,29 +22,18 @@ class PeerExecutionManager {
         // UI
         this.modalId = 'peerExecutionModal';
 
-        // ICE Server Configuration - includes TURN servers for NAT traversal
+        // ICE Server Configuration
         this.iceConfig = {
             iceServers: [
-                // Google STUN servers
+                // Google STUN servers (Standard & Reliable)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
-                // OpenRelay TURN servers (free, community-provided)
-                {
-                    urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                },
-                {
-                    urls: 'turn:openrelay.metered.ca:443',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                },
-                {
-                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                }
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                // Other public STUN servers
+                { urls: 'stun:stun.services.mozilla.com' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
             ],
             iceCandidatePoolSize: 10
         };
