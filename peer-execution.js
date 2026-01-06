@@ -103,8 +103,14 @@ class PeerExecutionManager {
         if (this.hostConnection) {
             // I am CLIENT
             if (message.type === 'output') {
-                if (typeof term !== 'undefined') term.write(message.data);
+                console.log('[PeerExec] Client received output:', message.data);
+                if (typeof term !== 'undefined') {
+                    term.write(message.data);
+                } else {
+                    console.warn('[PeerExec] Term is undefined!');
+                }
             } else if (message.type === 'result') {
+                console.log('[PeerExec] Client received result:', message);
                 if (typeof term !== 'undefined') {
                     if (message.error) term.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
                     if (typeof message.exitCode !== 'undefined') term.writeln(`\r\n\x1b[32m...Program finished (${message.exitCode})\x1b[0m`);
@@ -122,9 +128,12 @@ class PeerExecutionManager {
         } else {
             // I am HOST
             if (message.type === 'execute') {
+                console.log('[PeerExec] Host executing for peer:', message.language);
                 this.executeLocally(message.code, message.language, (output) => {
+                    console.log('[PeerExec] Host sending output chunk:', output);
                     this.sendRelayData(JSON.stringify({ type: 'output', data: output }), fromId, 'host');
                 }).then(result => {
+                    console.log('[PeerExec] Host execution finished:', result);
                     this.sendRelayData(JSON.stringify({ type: 'result', ...result }), fromId, 'host');
                 });
             } else if (message.type === 'input' && this.localExecutor) {
@@ -1005,7 +1014,10 @@ class PeerExecutionManager {
     // =========================================================================
 
     isConnectedToHost() {
-        if (this.useFirebaseRelay) return true;
+        if (this.useFirebaseRelay) {
+            // Only return true if I am a CLIENT (have a host connection)
+            return !!this.hostConnection;
+        }
 
         const channelOpen = this.executionChannel && this.executionChannel.readyState === 'open';
         const hasHost = !!this.hostConnection;
