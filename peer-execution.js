@@ -22,6 +22,33 @@ class PeerExecutionManager {
         // UI
         this.modalId = 'peerExecutionModal';
 
+        // ICE Server Configuration - includes TURN servers for NAT traversal
+        this.iceConfig = {
+            iceServers: [
+                // Google STUN servers
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                // OpenRelay TURN servers (free, community-provided)
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ],
+            iceCandidatePoolSize: 10
+        };
+
         // Initialize
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.init());
@@ -515,13 +542,8 @@ class PeerExecutionManager {
     async handleConnectionRequest(clientId, offer) {
         console.log('[PeerExec] Connection request from:', clientId);
 
-        // Create RTCPeerConnection
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
+        // Create RTCPeerConnection with TURN servers for NAT traversal
+        const pc = new RTCPeerConnection(this.iceConfig);
 
         // HOST receives the data channel from the CLIENT (who creates it)
         pc.ondatachannel = (event) => {
@@ -687,12 +709,8 @@ class PeerExecutionManager {
             console.log('[PeerExec] Connecting to host:', hostData.hostName);
 
             // Create RTCPeerConnection
-            const pc = new RTCPeerConnection({
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            });
+            // Create RTCPeerConnection with TURN servers for NAT traversal
+            const pc = new RTCPeerConnection(this.iceConfig);
 
             // CLIENT creates the data channel BEFORE creating offer
             // This is the standard WebRTC pattern for reliable data channel
