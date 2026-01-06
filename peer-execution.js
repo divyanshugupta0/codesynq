@@ -104,16 +104,27 @@ class PeerExecutionManager {
             // I am CLIENT
             if (message.type === 'output') {
                 console.log('[PeerExec] Client received output:', message.data);
-                if (typeof term !== 'undefined') {
+
+                // Explicitly use window.term to ensure we access the global instance
+                if (window.term) {
+                    // Convert newlines to CRLF for xterm if needed, though usually handled by convertEol: true
+                    let output = message.data;
+                    if (output && !output.includes('\r\n') && output.includes('\n')) {
+                        output = output.replace(/\n/g, '\r\n');
+                    }
+                    window.term.write(output);
+                } else if (typeof term !== 'undefined') {
                     term.write(message.data);
                 } else {
                     console.warn('[PeerExec] Term is undefined!');
                 }
             } else if (message.type === 'result') {
                 console.log('[PeerExec] Client received result:', message);
-                if (typeof term !== 'undefined') {
-                    if (message.error) term.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
-                    if (typeof message.exitCode !== 'undefined') term.writeln(`\r\n\x1b[32m...Program finished (${message.exitCode})\x1b[0m`);
+                const terminal = window.term || (typeof term !== 'undefined' ? term : null);
+
+                if (terminal) {
+                    if (message.error) terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                    if (typeof message.exitCode !== 'undefined') terminal.writeln(`\r\n\x1b[32m...Program finished (${message.exitCode})\x1b[0m`);
                 }
 
                 // Resolve the pending promise from executeRemote
