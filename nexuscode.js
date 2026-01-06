@@ -2844,6 +2844,43 @@ function executeCode() {
     console.log('Code length:', code.length);
     console.log('ExecutionManager available:', !!window.executionManager);
     console.log('Local available:', window.executionManager?.isLocalAvailable);
+    console.log('Peer connected:', window.peerExecution?.isConnectedToHost?.());
+
+    // PRIORITY 1: Check if connected to peer execution host
+    // If connected, route ALL execution through peer connection
+    if (window.peerExecution && window.peerExecution.isConnectedToHost()) {
+        console.log('[Runner] Executing via PEER CONNECTION');
+        activeExecutionMode = 'peer';
+
+        if (typeof clearTerminal === 'function') clearTerminal();
+
+        // For JavaScript and HTML, run locally for speed
+        if (language === 'javascript') {
+            resetRunButton();
+            runCodeLocally(code, language);
+            return;
+        }
+        if (language === 'html') {
+            resetRunButton();
+            showPreview(code);
+            return;
+        }
+
+        // For other languages, use peer execution
+        window.peerExecution.executeRemote(code, language).then(result => {
+            resetRunButton();
+            if (result && !result.success && result.error) {
+                if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[31mError: ${result.error}\x1b[0m`);
+            }
+            if (result && typeof result.exitCode !== 'undefined') {
+                if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[32m...Program finished (exit code ${result.exitCode})\x1b[0m`);
+            }
+        }).catch(err => {
+            resetRunButton();
+            if (typeof term !== 'undefined') term.writeln(`\r\n\x1b[31mPeer Execution Error: ${err.message}\x1b[0m`);
+        });
+        return;
+    }
 
     // Setup output handler for local execution if not already set
     // Setup/refresh output handler for local execution
@@ -3852,7 +3889,11 @@ function processInput(input) {
     console.log('[processInput] Active execution:', activeExecutionMode, 'Input:', input);
 
     // Route based on which execution is currently active
-    if (activeExecutionMode === 'local' &&
+    if (activeExecutionMode === 'peer' &&
+        window.peerExecution && window.peerExecution.isConnectedToHost()) {
+        // Send to peer host via WebRTC DataChannel
+        window.peerExecution.sendInput(input + '\n');
+    } else if (activeExecutionMode === 'local' &&
         window.executionManager && window.executionManager.localClient) {
         // Send to local server via HTTP POST
         window.executionManager.localClient.sendInput(input + '\n');

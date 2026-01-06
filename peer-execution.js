@@ -865,8 +865,9 @@ class PeerExecutionManager {
     }
 }
 
-// Initialize
+// Initialize and attach to window for global access
 const peerExecution = new PeerExecutionManager();
+window.peerExecution = peerExecution;
 
 // Export
 if (typeof module !== 'undefined' && module.exports) {
