@@ -124,6 +124,35 @@ class PeerExecutionManager {
                         }
                     }
 
+                    // Log parsing: Check if output contains internal JSON log format
+                    // e.g. {"type":"stdout","data":"..."}
+                    if (output.includes('{"type":')) {
+                        try {
+                            // Handle concatenated JSON objects: {...}{...} -> [{...},{...}]
+                            const fixedJson = '[' + output.replace(/\}\{/g, '},{') + ']';
+                            const msgs = JSON.parse(fixedJson);
+
+                            if (Array.isArray(msgs)) {
+                                msgs.forEach(msg => {
+                                    if (msg.type === 'control' && msg.action === 'clear-terminal') {
+                                        window.term.clear();
+                                    } else if (msg.data) {
+                                        // Handle newlines in the data content
+                                        let text = msg.data;
+                                        if (text && !text.includes('\r\n') && text.includes('\n')) {
+                                            text = text.replace(/\n/g, '\r\n');
+                                        }
+                                        window.term.write(text);
+                                    }
+                                });
+                                return; // Successfully handled as parsed logs
+                            }
+                        } catch (e) {
+                            // Parsing failed, fall back to raw output
+                            // console.warn('[PeerExec] Failed to parse log output:', e);
+                        }
+                    }
+
                     if (output && !output.includes('\r\n') && output.includes('\n')) {
                         output = output.replace(/\n/g, '\r\n');
                     }
