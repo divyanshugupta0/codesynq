@@ -89,6 +89,14 @@
     "adminNotifications": {
       ".read": "auth != null",
       ".write": "auth != null && root.child('users').child(auth.uid).child('isAdmin').val() == true"
+    },
+    "collab_sessions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "execution_sharing": {
+      ".read": "auth != null",
+      ".write": "auth != null"
     }
   }
 }

@@ -1,7 +1,7 @@
 /**
  * CodeSynq Collaboration Module 3.0 (Socket.io Edition)
  * Centralized Real-time collaboration via Collab Engine.
- */
+*/
 
 class CollaborationManager {
     constructor() {

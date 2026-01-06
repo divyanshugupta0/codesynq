@@ -71,6 +71,17 @@ class ExecutionManager {
     }
 
     async execute(code, language) {
+        // Check if connected to peer execution host first
+        if (window.peerExecution && window.peerExecution.isConnectedToHost()) {
+            console.log('[ExecutionManager] Executing via Peer Connection');
+            try {
+                return await window.peerExecution.executeRemote(code, language);
+            } catch (error) {
+                console.error('[ExecutionManager] Peer execution failed:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
         // Determine mode
         let modeToUse = this.executionMode;
         if (modeToUse === 'local') {
