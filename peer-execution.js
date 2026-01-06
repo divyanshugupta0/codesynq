@@ -12,6 +12,10 @@ class PeerExecutionManager {
         this.connectedPeers = new Map();  // For hosts: connected clients
         this.hostConnection = null;       // For clients: connection to host
 
+        // Fallback state
+        this.useFirebaseRelay = false;
+        this.relayRef = null;
+
         // Firebase references
         this.sharingRef = null;
         this.offersRef = null;
@@ -44,6 +48,108 @@ class PeerExecutionManager {
         } else {
             this.init();
         }
+    }
+
+    // =========================================================================
+    // FIREBASE RELAY FALLBACK
+    // =========================================================================
+
+    enableFirebaseRelay(connectionCode, role, peerId) {
+        console.log(`[PeerExec] enabling Firebase Relay fallback (${role})`);
+        this.useFirebaseRelay = true;
+        this.connectionCode = connectionCode;
+
+        const path = `execution_sharing/${connectionCode}/relay`;
+        this.relayRef = window.database.ref(path);
+
+        // Listen for messages directed to me
+        // Host listens to: relay/to_host/{clientId}
+        // Client listens to: relay/to_client/{clientId}
+
+        let listenPath = '';
+        if (role === 'host') {
+            listenPath = `${path}/to_host/${peerId}`;
+        } else {
+            listenPath = `${path}/to_client/${peerId}`; // peerId is my ID (client)
+        }
+
+        window.database.ref(listenPath).on('child_added', (snapshot) => {
+            const msg = snapshot.val();
+            if (!msg) return;
+
+            // Avoid processing my own messages (though paths are separate, good safety)
+            if (msg.timestamp < Date.now() - 10000) return; // Ignore old
+
+            this.handleRelayMessage(msg.data, role === 'host' ? peerId : 'host');
+
+            // Cleanup read message
+            snapshot.ref.remove();
+        });
+
+        this.showNotification('Switched to Relay Mode (P2P Failed)', 'warning');
+
+        if (role === 'client') {
+            this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host (Relay)');
+            document.getElementById('connectNotConnected').style.display = 'none';
+            document.getElementById('connectIsConnected').style.display = 'block';
+            document.getElementById('connectedHostName').textContent = (this.hostConnection?.hostName || 'Host') + ' (Relay Mode)';
+        }
+    }
+
+    handleRelayMessage(data, fromId) {
+        const message = JSON.parse(data);
+        console.log('[PeerExec] Relay message:', message.type);
+
+        if (this.hostConnection) {
+            // I am CLIENT
+            if (message.type === 'output') {
+                if (typeof term !== 'undefined') term.write(message.data);
+            } else if (message.type === 'result') {
+                if (typeof term !== 'undefined') {
+                    if (message.error) term.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                    if (typeof message.exitCode !== 'undefined') term.writeln(`\r\n\x1b[32m...Program finished (${message.exitCode})\x1b[0m`);
+                }
+
+                // Resolve the pending promise from executeRemote
+                if (this.pendingRelayResolve) {
+                    this.pendingRelayResolve(message);
+                    this.pendingRelayResolve = null;
+                    this.pendingRelayReject = null;
+                }
+
+                if (typeof resetRunButton === 'function') resetRunButton();
+            }
+        } else {
+            // I am HOST
+            if (message.type === 'execute') {
+                this.executeLocally(message.code, message.language, (output) => {
+                    this.sendRelayData(JSON.stringify({ type: 'output', data: output }), fromId, 'host');
+                }).then(result => {
+                    this.sendRelayData(JSON.stringify({ type: 'result', ...result }), fromId, 'host');
+                });
+            } else if (message.type === 'input' && this.localExecutor) {
+                this.localExecutor.sendInput(message.input);
+            }
+        }
+    }
+
+    sendRelayData(data, targetId, fromRole) {
+        if (!this.relayRef) return;
+
+        let path = '';
+        // If I am sending AS host, I send TO client
+        if (fromRole === 'host') {
+            path = `execution_sharing/${this.connectionCode}/relay/to_client/${targetId}`;
+        } else {
+            // I am sending AS client, I send TO host
+            // targetId here for client->host is just my own ID so host knows who sent it
+            path = `execution_sharing/${this.connectionCode}/relay/to_host/${window.currentUser.uid}`;
+        }
+
+        window.database.ref(path).push({
+            data: data,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
     }
 
     init() {
@@ -556,6 +662,17 @@ class PeerExecutionManager {
 
         pc.onconnectionstatechange = () => {
             console.log('[PeerExec] Host connection state:', pc.connectionState);
+            if (pc.connectionState === 'failed') {
+                console.warn('[PeerExec] P2P connection failed, switching to Firebase Relay (Host)');
+                this.enableFirebaseRelay(this.connectionCode, 'host', clientId);
+
+                // Keep the peer in the list but mark as relay
+                const peer = this.connectedPeers.get(clientId);
+                if (peer) {
+                    peer.isRelay = true;
+                    this.updateClientsList();
+                }
+            }
         };
 
         // Set remote description and create answer
@@ -761,7 +878,12 @@ class PeerExecutionManager {
 
             pc.onconnectionstatechange = () => {
                 console.log('[PeerExec] Connection state:', pc.connectionState);
-                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+                if (pc.connectionState === 'failed') {
+                    console.warn('[PeerExec] P2P connection failed, switching to Firebase Relay (Client)');
+                    // Prevent disconnect cleanup
+                    this.hostConnection.method = 'relay';
+                    this.enableFirebaseRelay(code, 'client', clientId);
+                } else if (pc.connectionState === 'disconnected') {
                     this.disconnect();
                 }
             };
@@ -883,19 +1005,43 @@ class PeerExecutionManager {
     // =========================================================================
 
     isConnectedToHost() {
+        if (this.useFirebaseRelay) return true;
+
         const channelOpen = this.executionChannel && this.executionChannel.readyState === 'open';
         const hasHost = !!this.hostConnection;
-        console.log('[PeerExec] isConnectedToHost check:', {
+        /* console.log('[PeerExec] isConnectedToHost check:', {
             channelOpen,
             hasHost,
             channelState: this.executionChannel?.readyState
-        });
+        }); */
         return channelOpen && hasHost;
     }
 
     async executeRemote(code, language) {
         if (!this.isConnectedToHost()) {
             throw new Error('Not connected to execution host');
+        }
+
+        if (this.useFirebaseRelay) {
+            return new Promise((resolve, reject) => {
+                this.pendingRelayResolve = resolve;
+                this.pendingRelayReject = reject;
+
+                this.sendRelayData(JSON.stringify({
+                    type: 'execute',
+                    code,
+                    language
+                }), this.hostConnection.code, 'client');
+
+                // Timeout
+                setTimeout(() => {
+                    if (this.pendingRelayReject) {
+                        this.pendingRelayReject(new Error('Relay execution timeout'));
+                        this.pendingRelayResolve = null;
+                        this.pendingRelayReject = null;
+                    }
+                }, 60000);
+            });
         }
 
         return new Promise((resolve, reject) => {
@@ -929,7 +1075,14 @@ class PeerExecutionManager {
 
     sendInput(input) {
         if (this.isConnectedToHost()) {
-            this.executionChannel.send(JSON.stringify({ type: 'input', input }));
+            if (this.useFirebaseRelay) {
+                this.sendRelayData(JSON.stringify({
+                    type: 'input',
+                    input
+                }), this.hostConnection.code, 'client');
+            } else {
+                this.executionChannel.send(JSON.stringify({ type: 'input', input }));
+            }
         }
     }
 
