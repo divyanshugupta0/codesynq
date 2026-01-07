@@ -93,6 +93,18 @@ class PeerExecutionManager {
             document.getElementById('connectNotConnected').style.display = 'none';
             document.getElementById('connectIsConnected').style.display = 'block';
             document.getElementById('connectedHostName').textContent = (this.hostConnection?.hostName || 'Host') + ' (Relay Mode)';
+            
+            // Switch to terminal tab to show relay connection status
+            if (typeof switchTab === 'function') {
+                switchTab('terminal');
+            }
+            
+            // Show connection status in terminal
+            const terminal = this.ensureTerminalReady();
+            if (terminal) {
+                terminal.writeln('\r\n\x1b[33m[Relay Mode] Connected via Firebase Relay\x1b[0m');
+                terminal.writeln('\x1b[33mReady to execute code...\x1b[0m\r\n');
+            }
         }
     }
 
@@ -105,70 +117,69 @@ class PeerExecutionManager {
             if (message.type === 'output') {
                 console.log('[PeerExec] Client received output:', message.data);
 
-                // Explicitly use window.term to ensure we access the global instance
-                if (window.term) {
-                    // Convert newlines to CRLF for xterm if needed, though usually handled by convertEol: true
-                    let output = message.data;
+                // Ensure terminal is ready and get reference
+                const terminal = this.ensureTerminalReady();
+                
+                if (!terminal) {
+                    console.error('[PeerExec] No terminal available for output!');
+                    return;
+                }
 
-                    // Safety check: Ensure output is a string
-                    if (typeof output !== 'string') {
-                        console.warn('[PeerExec] Output is not a string:', output);
-                        if (typeof output === 'object') {
-                            try {
-                                output = JSON.stringify(output);
-                            } catch (e) {
-                                output = String(output);
-                            }
-                        } else {
-                            output = String(output || '');
-                        }
-                    }
+                let output = message.data;
 
-                    // Log parsing: Check if output contains internal JSON log format
-                    // e.g. {"type":"stdout","data":"..."}
-                    if (output.includes('{"type":')) {
+                // Safety check: Ensure output is a string
+                if (typeof output !== 'string') {
+                    console.warn('[PeerExec] Output is not a string:', output);
+                    if (typeof output === 'object') {
                         try {
-                            // Handle concatenated JSON objects: {...}{...} -> [{...},{...}]
-                            const fixedJson = '[' + output.replace(/\}\{/g, '},{') + ']';
-                            const msgs = JSON.parse(fixedJson);
-
-                            if (Array.isArray(msgs)) {
-                                msgs.forEach(msg => {
-                                    if (msg.type === 'control' && msg.action === 'clear-terminal') {
-                                        window.term.clear();
-                                    } else if (msg.data) {
-                                        // Handle newlines in the data content
-                                        let text = msg.data;
-                                        if (text && !text.includes('\r\n') && text.includes('\n')) {
-                                            text = text.replace(/\n/g, '\r\n');
-                                        }
-                                        window.term.write(text);
-                                    }
-                                });
-                                return; // Successfully handled as parsed logs
-                            }
+                            output = JSON.stringify(output);
                         } catch (e) {
-                            // Parsing failed, fall back to raw output
-                            // console.warn('[PeerExec] Failed to parse log output:', e);
+                            output = String(output);
                         }
+                    } else {
+                        output = String(output || '');
                     }
+                }
 
-                    if (output && !output.includes('\r\n') && output.includes('\n')) {
-                        output = output.replace(/\n/g, '\r\n');
+                // Handle structured log output from local server
+                if (output.includes('{"type":')) {
+                    try {
+                        // Handle concatenated JSON objects: {...}{...} -> [{...},{...}]
+                        const fixedJson = '[' + output.replace(/\}\{/g, '},{') + ']';
+                        const msgs = JSON.parse(fixedJson);
+
+                        if (Array.isArray(msgs)) {
+                            msgs.forEach(msg => {
+                                if (msg.type === 'control' && msg.action === 'clear-terminal') {
+                                    terminal.clear();
+                                } else if (msg.data) {
+                                    // Write data directly - xterm handles newlines with convertEol: true
+                                    terminal.write(msg.data);
+                                }
+                            });
+                            return; // Successfully handled as parsed logs
+                        }
+                    } catch (e) {
+                        console.warn('[PeerExec] Failed to parse structured output, using raw:', e);
+                        // Fall through to raw output handling
                     }
-                    window.term.write(output);
-                } else if (typeof term !== 'undefined') {
-                    term.write(message.data);
-                } else {
-                    console.warn('[PeerExec] Term is undefined!');
+                }
+
+                // Handle raw output - xterm handles newline conversion automatically
+                if (output) {
+                    terminal.write(output);
                 }
             } else if (message.type === 'result') {
                 console.log('[PeerExec] Client received result:', message);
-                const terminal = window.term || (typeof term !== 'undefined' ? term : null);
+                const terminal = this.ensureTerminalReady();
 
                 if (terminal) {
-                    if (message.error) terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
-                    if (typeof message.exitCode !== 'undefined') terminal.writeln(`\r\n\x1b[32m...Program finished (${message.exitCode})\x1b[0m`);
+                    if (message.error) {
+                        terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                    }
+                    if (typeof message.exitCode !== 'undefined') {
+                        terminal.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
+                    }
                 }
 
                 // Resolve the pending promise from executeRemote
@@ -190,6 +201,9 @@ class PeerExecutionManager {
                 }).then(result => {
                     console.log('[PeerExec] Host execution finished:', result);
                     this.sendRelayData(JSON.stringify({ type: 'result', ...result }), fromId, 'host');
+                }).catch(error => {
+                    console.error('[PeerExec] Host execution error:', error);
+                    this.sendRelayData(JSON.stringify({ type: 'result', success: false, error: error.message }), fromId, 'host');
                 });
             } else if (message.type === 'input' && this.localExecutor) {
                 this.localExecutor.sendInput(message.input);
@@ -895,6 +909,18 @@ class PeerExecutionManager {
                 console.log('[PeerExec] Data channel OPEN - connected to host!');
                 this.executionChannel = execChannel;
                 this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host');
+                
+                // Ensure terminal is ready and switch to it
+                const terminal = this.ensureTerminalReady();
+                if (typeof switchTab === 'function') {
+                    switchTab('terminal');
+                }
+                
+                if (terminal) {
+                    terminal.writeln('\r\n\x1b[32m[P2P] Connected to host via DataChannel\x1b[0m');
+                    terminal.writeln('\x1b[32mReady to execute code...\x1b[0m\r\n');
+                }
+                
                 this.showNotification(`Connected to ${this.hostConnection?.hostName || 'Host'}! Ready for peer execution.`, 'success');
             };
 
@@ -909,21 +935,23 @@ class PeerExecutionManager {
 
             execChannel.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                console.log('[PeerExec] Received message:', message.type);
+                console.log('[PeerExec] Received P2P message:', message.type);
 
+                const terminal = this.ensureTerminalReady();
+                
                 if (message.type === 'output') {
-                    // Forward to terminal
-                    if (typeof term !== 'undefined') {
-                        term.write(message.data);
+                    console.log('[PeerExec] P2P output received:', message.data);
+                    if (terminal) {
+                        terminal.write(message.data);
                     }
                 } else if (message.type === 'result') {
-                    // Handle execution result
-                    if (typeof term !== 'undefined') {
+                    console.log('[PeerExec] P2P result received:', message);
+                    if (terminal) {
                         if (message.error) {
-                            term.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                            terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
                         }
                         if (typeof message.exitCode !== 'undefined') {
-                            term.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
+                            terminal.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
                         }
                     }
                     if (typeof resetRunButton === 'function') {
@@ -1017,27 +1045,44 @@ class PeerExecutionManager {
         this.executionChannel = channel;
 
         channel.onopen = () => {
-            console.log('[PeerExec] Connected to host!');
+            console.log('[PeerExec] P2P DataChannel connected to host!');
             this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host');
+            
+            const terminal = this.ensureTerminalReady();
+            if (terminal) {
+                terminal.writeln('\r\n\x1b[32m[P2P] Connected to host via DataChannel\x1b[0m');
+                terminal.writeln('\x1b[32mReady to execute code...\x1b[0m\r\n');
+            }
         };
 
         channel.onclose = () => {
-            console.log('[PeerExec] Disconnected from host');
+            console.log('[PeerExec] P2P DataChannel disconnected from host');
             this.disconnect();
         };
 
         channel.onmessage = (event) => {
             const message = JSON.parse(event.data);
+            console.log('[PeerExec] P2P channel message:', message.type);
 
+            const terminal = this.ensureTerminalReady();
+            
             if (message.type === 'output') {
-                // Forward to terminal
-                if (window.appendTerminalOutput) {
-                    window.appendTerminalOutput(message.data);
+                console.log('[PeerExec] P2P output:', message.data);
+                if (terminal) {
+                    terminal.write(message.data);
                 }
             } else if (message.type === 'result') {
-                // Handle execution result
-                if (window.handleExecutionResult) {
-                    window.handleExecutionResult(message);
+                console.log('[PeerExec] P2P result:', message);
+                if (terminal) {
+                    if (message.error) {
+                        terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+                    }
+                    if (typeof message.exitCode !== 'undefined') {
+                        terminal.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
+                    }
+                }
+                if (typeof resetRunButton === 'function') {
+                    resetRunButton();
                 }
             }
         };
@@ -1071,16 +1116,23 @@ class PeerExecutionManager {
     isConnectedToHost() {
         if (this.useFirebaseRelay) {
             // Only return true if I am a CLIENT (have a host connection)
-            return !!this.hostConnection;
+            const connected = !!this.hostConnection;
+            console.log('[PeerExec] Relay connection check:', {
+                useFirebaseRelay: this.useFirebaseRelay,
+                hasHostConnection: connected,
+                hostName: this.hostConnection?.hostName
+            });
+            return connected;
         }
 
         const channelOpen = this.executionChannel && this.executionChannel.readyState === 'open';
         const hasHost = !!this.hostConnection;
-        /* console.log('[PeerExec] isConnectedToHost check:', {
+        console.log('[PeerExec] P2P connection check:', {
             channelOpen,
             hasHost,
-            channelState: this.executionChannel?.readyState
-        }); */
+            channelState: this.executionChannel?.readyState,
+            hostName: this.hostConnection?.hostName
+        });
         return channelOpen && hasHost;
     }
 
@@ -1089,10 +1141,22 @@ class PeerExecutionManager {
             throw new Error('Not connected to execution host');
         }
 
+        // Clear terminal before execution and ensure it's ready
+        const terminal = this.ensureTerminalReady();
+        if (terminal && typeof clearTerminal === 'function') {
+            clearTerminal();
+        }
+
         if (this.useFirebaseRelay) {
+            console.log('[PeerExec] Executing via Firebase Relay');
             return new Promise((resolve, reject) => {
                 this.pendingRelayResolve = resolve;
                 this.pendingRelayReject = reject;
+
+                // Show execution start message
+                if (terminal) {
+                    terminal.writeln(`\x1b[36m[Relay] Executing ${language} code...\x1b[0m\r\n`);
+                }
 
                 this.sendRelayData(JSON.stringify({
                     type: 'execute',
@@ -1100,17 +1164,29 @@ class PeerExecutionManager {
                     language
                 }), this.hostConnection.code, 'client');
 
-                // Timeout
+                // Timeout with better error message
                 setTimeout(() => {
                     if (this.pendingRelayReject) {
-                        this.pendingRelayReject(new Error('Relay execution timeout'));
+                        this.pendingRelayReject(new Error('Execution timeout - host may be offline'));
                         this.pendingRelayResolve = null;
                         this.pendingRelayReject = null;
+                        
+                        if (terminal) {
+                            terminal.writeln('\r\n\x1b[31mExecution timeout - host may be offline\x1b[0m');
+                        }
                     }
                 }, 60000);
             });
         }
 
+        // Direct P2P execution
+        console.log('[PeerExec] Executing via P2P DataChannel');
+        
+        // Switch to terminal tab to show output
+        if (typeof switchTab === 'function') {
+            switchTab('terminal');
+        }
+        
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error('Execution timeout'));
@@ -1122,8 +1198,8 @@ class PeerExecutionManager {
                 const message = JSON.parse(event.data);
 
                 if (message.type === 'output') {
-                    if (window.appendTerminalOutput) {
-                        window.appendTerminalOutput(message.data);
+                    if (terminal) {
+                        terminal.write(message.data);
                     }
                 } else if (message.type === 'result') {
                     clearTimeout(timeout);
@@ -1143,19 +1219,47 @@ class PeerExecutionManager {
     sendInput(input) {
         if (this.isConnectedToHost()) {
             if (this.useFirebaseRelay) {
+                console.log('[PeerExec] Sending input via relay:', input);
                 this.sendRelayData(JSON.stringify({
                     type: 'input',
                     input
                 }), this.hostConnection.code, 'client');
             } else {
+                console.log('[PeerExec] Sending input via P2P:', input);
                 this.executionChannel.send(JSON.stringify({ type: 'input', input }));
             }
+        } else {
+            console.warn('[PeerExec] Cannot send input - not connected to host');
         }
     }
 
     // =========================================================================
     // UTILITIES
     // =========================================================================
+
+    ensureTerminalReady() {
+        // Check if terminal is available
+        let terminal = window.term || (typeof term !== 'undefined' ? term : null);
+        
+        if (!terminal) {
+            console.warn('[PeerExec] Terminal not available, attempting to initialize...');
+            // Try to initialize terminal if the function exists
+            if (typeof initTerminal === 'function') {
+                initTerminal();
+                terminal = window.term || (typeof term !== 'undefined' ? term : null);
+            }
+        }
+        
+        if (!terminal) {
+            console.error('[PeerExec] Terminal still not available after initialization attempt');
+            // Switch to terminal tab to ensure it's visible
+            if (typeof switchTab === 'function') {
+                switchTab('terminal');
+            }
+        }
+        
+        return terminal;
+    }
 
     showNotification(message, type = 'info') {
         if (typeof showNotification === 'function') {
