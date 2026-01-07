@@ -9,10 +9,10 @@ class PeerExecutionManager {
         // Sharing state
         this.isSharing = false;
         this.connectionCode = null;
-        this.connectedPeers = new Map();  // For hosts: connected clients
-        this.hostConnection = null;       // For clients: connection to host
+        this.connectedPeers = new Map();
+        this.hostConnection = null;
 
-        // Fallback state
+        // Firebase Relay state
         this.useFirebaseRelay = false;
         this.relayRef = null;
 
@@ -25,22 +25,6 @@ class PeerExecutionManager {
 
         // UI
         this.modalId = 'peerExecutionModal';
-
-        // ICE Server Configuration
-        this.iceConfig = {
-            iceServers: [
-                // Google STUN servers (Standard & Reliable)
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' },
-                // Other public STUN servers
-                { urls: 'stun:stun.services.mozilla.com' },
-                { urls: 'stun:global.stun.twilio.com:3478' }
-            ],
-            iceCandidatePoolSize: 10
-        };
 
         // Initialize
         if (document.readyState === 'loading') {
@@ -55,56 +39,49 @@ class PeerExecutionManager {
     // =========================================================================
 
     enableFirebaseRelay(connectionCode, role, peerId) {
-        console.log(`[PeerExec] enabling Firebase Relay fallback (${role})`);
+        console.log(`[PeerExec] Using Firebase Relay (${role})`);
         this.useFirebaseRelay = true;
         this.connectionCode = connectionCode;
 
         const path = `execution_sharing/${connectionCode}/relay`;
         this.relayRef = window.database.ref(path);
 
-        // Listen for messages directed to me
-        // Host listens to: relay/to_host/{clientId}
-        // Client listens to: relay/to_client/{clientId}
-
         let listenPath = '';
         if (role === 'host') {
             listenPath = `${path}/to_host/${peerId}`;
         } else {
-            listenPath = `${path}/to_client/${peerId}`; // peerId is my ID (client)
+            listenPath = `${path}/to_client/${peerId}`;
         }
 
         window.database.ref(listenPath).on('child_added', (snapshot) => {
             const msg = snapshot.val();
             if (!msg) return;
 
-            // Avoid processing my own messages (though paths are separate, good safety)
-            if (msg.timestamp < Date.now() - 10000) return; // Ignore old
+            if (msg.timestamp < Date.now() - 10000) return;
 
             this.handleRelayMessage(msg.data, role === 'host' ? peerId : 'host');
 
-            // Cleanup read message
+            // Auto-delete message after processing
             snapshot.ref.remove();
         });
-
-        this.showNotification('Switched to Relay Mode (P2P Failed)', 'warning');
 
         if (role === 'client') {
             this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host (Relay)');
             document.getElementById('connectNotConnected').style.display = 'none';
             document.getElementById('connectIsConnected').style.display = 'block';
-            document.getElementById('connectedHostName').textContent = (this.hostConnection?.hostName || 'Host') + ' (Relay Mode)';
+            document.getElementById('connectedHostName').textContent = (this.hostConnection?.hostName || 'Host') + ' (Relay)';
             
-            // Switch to terminal tab to show relay connection status
             if (typeof switchTab === 'function') {
                 switchTab('terminal');
             }
             
-            // Show connection status in terminal
             const terminal = this.ensureTerminalReady();
             if (terminal) {
-                terminal.writeln('\r\n\x1b[33m[Relay Mode] Connected via Firebase Relay\x1b[0m');
+                terminal.writeln('\r\n\x1b[33m[Relay] Connected via Firebase\x1b[0m');
                 terminal.writeln('\x1b[33mReady to execute code...\x1b[0m\r\n');
             }
+            
+            this.showNotification('Connected via Firebase Relay!', 'success');
         }
     }
 
@@ -116,8 +93,6 @@ class PeerExecutionManager {
             // I am CLIENT
             if (message.type === 'output') {
                 console.log('[PeerExec] Client received output:', message.data);
-
-                // Ensure terminal is ready and get reference
                 const terminal = this.ensureTerminalReady();
                 
                 if (!terminal) {
@@ -126,25 +101,12 @@ class PeerExecutionManager {
                 }
 
                 let output = message.data;
-
-                // Safety check: Ensure output is a string
                 if (typeof output !== 'string') {
-                    console.warn('[PeerExec] Output is not a string:', output);
-                    if (typeof output === 'object') {
-                        try {
-                            output = JSON.stringify(output);
-                        } catch (e) {
-                            output = String(output);
-                        }
-                    } else {
-                        output = String(output || '');
-                    }
+                    output = String(output || '');
                 }
 
-                // Handle structured log output from local server
                 if (output.includes('{"type":')) {
                     try {
-                        // Handle concatenated JSON objects: {...}{...} -> [{...},{...}]
                         const fixedJson = '[' + output.replace(/\}\{/g, '},{') + ']';
                         const msgs = JSON.parse(fixedJson);
 
@@ -153,19 +115,16 @@ class PeerExecutionManager {
                                 if (msg.type === 'control' && msg.action === 'clear-terminal') {
                                     terminal.clear();
                                 } else if (msg.data) {
-                                    // Write data directly - xterm handles newlines with convertEol: true
                                     terminal.write(msg.data);
                                 }
                             });
-                            return; // Successfully handled as parsed logs
+                            return;
                         }
                     } catch (e) {
                         console.warn('[PeerExec] Failed to parse structured output, using raw:', e);
-                        // Fall through to raw output handling
                     }
                 }
 
-                // Handle raw output - xterm handles newline conversion automatically
                 if (output) {
                     terminal.write(output);
                 }
@@ -182,7 +141,9 @@ class PeerExecutionManager {
                     }
                 }
 
-                // Resolve the pending promise from executeRemote
+                // Clean up relay data after successful result
+                this.cleanupRelayData();
+
                 if (this.pendingRelayResolve) {
                     this.pendingRelayResolve(message);
                     this.pendingRelayResolve = null;
@@ -201,9 +162,15 @@ class PeerExecutionManager {
                 }).then(result => {
                     console.log('[PeerExec] Host execution finished:', result);
                     this.sendRelayData(JSON.stringify({ type: 'result', ...result }), fromId, 'host');
+                    
+                    // Clean up relay data after sending result
+                    setTimeout(() => this.cleanupRelayData(), 2000);
                 }).catch(error => {
                     console.error('[PeerExec] Host execution error:', error);
                     this.sendRelayData(JSON.stringify({ type: 'result', success: false, error: error.message }), fromId, 'host');
+                    
+                    // Clean up relay data after error
+                    setTimeout(() => this.cleanupRelayData(), 2000);
                 });
             } else if (message.type === 'input' && this.localExecutor) {
                 this.localExecutor.sendInput(message.input);
@@ -688,6 +655,9 @@ class PeerExecutionManager {
     async stopSharing() {
         this.isSharing = false;
 
+        // Clean up relay data
+        this.cleanupRelayData();
+
         // Remove from Firebase
         if (this.sharingRef) {
             await this.sharingRef.remove();
@@ -699,10 +669,7 @@ class PeerExecutionManager {
             this.offersRef = null;
         }
 
-        // Close all peer connections
-        this.connectedPeers.forEach((peer, id) => {
-            if (peer.connection) peer.connection.close();
-        });
+        // Clear connected peers
         this.connectedPeers.clear();
 
         // Update UI
@@ -714,123 +681,17 @@ class PeerExecutionManager {
 
     async handleConnectionRequest(clientId, offer) {
         console.log('[PeerExec] Connection request from:', clientId);
-
-        // Create RTCPeerConnection with TURN servers for NAT traversal
-        const pc = new RTCPeerConnection(this.iceConfig);
-
-        // HOST receives the data channel from the CLIENT (who creates it)
-        pc.ondatachannel = (event) => {
-            console.log('[PeerExec] Host received data channel from client');
-            const channel = event.channel;
-            this.setupExecutionChannel(channel, clientId);
-
-            // Update the connected peer with the channel
-            const peer = this.connectedPeers.get(clientId);
-            if (peer) {
-                peer.channel = channel;
-            }
-        };
-
-        // Handle ICE candidates
-        pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                this.sharingRef.child(`ice_host/${clientId}`).push(e.candidate.toJSON());
-            }
-        };
-
-        pc.onconnectionstatechange = () => {
-            console.log('[PeerExec] Host connection state:', pc.connectionState);
-            if (pc.connectionState === 'failed') {
-                console.warn('[PeerExec] P2P connection failed, switching to Firebase Relay (Host)');
-                this.enableFirebaseRelay(this.connectionCode, 'host', clientId);
-
-                // Keep the peer in the list but mark as relay
-                const peer = this.connectedPeers.get(clientId);
-                if (peer) {
-                    peer.isRelay = true;
-                    this.updateClientsList();
-                }
-            }
-        };
-
-        // Set remote description and create answer
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-            console.log('[PeerExec] Host set remote description');
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            console.log('[PeerExec] Host created and set answer');
-
-            // Send answer back
-            await this.sharingRef.child(`answers/${clientId}`).set({
-                sdp: pc.localDescription.toJSON(),
-                hostName: window.currentUser?.displayName || 'Host'
-            });
-            console.log('[PeerExec] Host sent answer to client');
-
-            // Listen for client ICE candidates
-            this.sharingRef.child(`ice_client/${clientId}`).on('child_added', async (snap) => {
-                try {
-                    await pc.addIceCandidate(new RTCIceCandidate(snap.val()));
-                    console.log('[PeerExec] Host added client ICE candidate');
-                } catch (e) {
-                    console.error('[PeerExec] ICE error:', e);
-                }
-            });
-
-            this.connectedPeers.set(clientId, {
-                connection: pc,
-                channel: null, // Will be set when ondatachannel fires
-                name: offer.clientName || 'User'
-            });
-
-            this.updateClientsList();
-        } catch (error) {
-            console.error('[PeerExec] Failed to handle connection:', error);
-        }
-    }
-
-    setupExecutionChannel(channel, clientId) {
-        channel.onopen = () => {
-            console.log('[PeerExec] Channel open with:', clientId);
-            this.updateClientsList();
-        };
-
-        channel.onclose = () => {
-            console.log('[PeerExec] Channel closed:', clientId);
-            this.connectedPeers.delete(clientId);
-            this.updateClientsList();
-        };
-
-        channel.onmessage = async (event) => {
-            const message = JSON.parse(event.data);
-
-            if (message.type === 'execute') {
-                // Execute code locally and send back results
-                console.log('[PeerExec] Executing for client:', clientId);
-
-                try {
-                    const result = await this.executeLocally(message.code, message.language, (output) => {
-                        // Stream output back
-                        channel.send(JSON.stringify({ type: 'output', data: output }));
-                    });
-
-                    channel.send(JSON.stringify({ type: 'result', ...result }));
-                } catch (error) {
-                    channel.send(JSON.stringify({
-                        type: 'result',
-                        success: false,
-                        error: error.message
-                    }));
-                }
-            } else if (message.type === 'input') {
-                // Forward input to local executor
-                if (this.localExecutor) {
-                    await this.localExecutor.sendInput(message.input);
-                }
-            }
-        };
+        
+        // Skip P2P setup, go directly to Firebase Relay
+        this.enableFirebaseRelay(this.connectionCode, 'host', clientId);
+        
+        // Add client to connected peers list
+        this.connectedPeers.set(clientId, {
+            name: offer.clientName || 'User',
+            isRelay: true
+        });
+        
+        this.updateClientsList();
     }
 
     async executeLocally(code, language, onOutput) {
@@ -890,150 +751,21 @@ class PeerExecutionManager {
             }
 
             const hostData = snapshot.val();
-            console.log('[PeerExec] Connecting to host:', hostData.hostName);
+            console.log('[PeerExec] Connecting to host via Firebase Relay:', hostData.hostName);
 
-            // Create RTCPeerConnection
-            // Create RTCPeerConnection with TURN servers for NAT traversal
-            const pc = new RTCPeerConnection(this.iceConfig);
-
-            // CLIENT creates the data channel BEFORE creating offer
-            // This is the standard WebRTC pattern for reliable data channel
-            const execChannel = pc.createDataChannel('execution', {
-                ordered: true,
-                maxRetransmits: 3
-            });
-            console.log('[PeerExec] Client created data channel');
-
-            // Set up the channel handlers
-            execChannel.onopen = () => {
-                console.log('[PeerExec] Data channel OPEN - connected to host!');
-                this.executionChannel = execChannel;
-                this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host');
-                
-                // Ensure terminal is ready and switch to it
-                const terminal = this.ensureTerminalReady();
-                if (typeof switchTab === 'function') {
-                    switchTab('terminal');
-                }
-                
-                if (terminal) {
-                    terminal.writeln('\r\n\x1b[32m[P2P] Connected to host via DataChannel\x1b[0m');
-                    terminal.writeln('\x1b[32mReady to execute code...\x1b[0m\r\n');
-                }
-                
-                this.showNotification(`Connected to ${this.hostConnection?.hostName || 'Host'}! Ready for peer execution.`, 'success');
-            };
-
-            execChannel.onclose = () => {
-                console.log('[PeerExec] Data channel closed');
-                this.disconnect();
-            };
-
-            execChannel.onerror = (error) => {
-                console.error('[PeerExec] Data channel error:', error);
-            };
-
-            execChannel.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                console.log('[PeerExec] Received P2P message:', message.type);
-
-                const terminal = this.ensureTerminalReady();
-                
-                if (message.type === 'output') {
-                    console.log('[PeerExec] P2P output received:', message.data);
-                    if (terminal) {
-                        terminal.write(message.data);
-                    }
-                } else if (message.type === 'result') {
-                    console.log('[PeerExec] P2P result received:', message);
-                    if (terminal) {
-                        if (message.error) {
-                            terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
-                        }
-                        if (typeof message.exitCode !== 'undefined') {
-                            terminal.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
-                        }
-                    }
-                    if (typeof resetRunButton === 'function') {
-                        resetRunButton();
-                    }
-                }
-            };
-
-            // ICE handling
-            const clientId = window.currentUser.uid;
-            pc.onicecandidate = (e) => {
-                if (e.candidate) {
-                    sharingRef.child(`ice_client/${clientId}`).push(e.candidate.toJSON());
-                }
-            };
-
-            pc.onconnectionstatechange = () => {
-                console.log('[PeerExec] Connection state:', pc.connectionState);
-                if (pc.connectionState === 'failed') {
-                    console.warn('[PeerExec] P2P connection failed, switching to Firebase Relay (Client)');
-                    // Prevent disconnect cleanup
-                    this.hostConnection.method = 'relay';
-                    this.enableFirebaseRelay(code, 'client', clientId);
-                } else if (pc.connectionState === 'disconnected') {
-                    this.disconnect();
-                }
-            };
-
-            // Create offer (data channel is already created, so it will be in the offer)
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            console.log('[PeerExec] Offer created and set');
-
-            // Send offer
-            await sharingRef.child(`offers/${clientId}`).set({
-                sdp: pc.localDescription.toJSON(),
-                clientName: window.currentUser.displayName || window.currentUser.username || 'User',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-            console.log('[PeerExec] Offer sent, waiting for answer...');
-
-            // Set hostConnection early so we know we're trying to connect
+            // Set hostConnection for relay mode
             this.hostConnection = {
                 code,
-                connection: pc,
                 hostName: hostData.hostName || 'Host'
             };
 
-            // Update UI to show connecting state
+            // Enable Firebase Relay directly (skip P2P)
+            this.enableFirebaseRelay(code, 'client', window.currentUser.uid);
+
+            // Update UI
             document.getElementById('connectNotConnected').style.display = 'none';
             document.getElementById('connectIsConnected').style.display = 'block';
-            document.getElementById('connectedHostName').textContent = 'Connecting...';
-
-            // Wait for answer
-            sharingRef.child(`answers/${clientId}`).on('value', async (snap) => {
-                if (!snap.exists()) return;
-
-                const answer = snap.val();
-                console.log('[PeerExec] Received answer from host');
-
-                try {
-                    await pc.setRemoteDescription(new RTCSessionDescription(answer.sdp));
-                    console.log('[PeerExec] Remote description set');
-
-                    // Update host name
-                    this.hostConnection.hostName = answer.hostName || hostData.hostName || 'Host';
-                    document.getElementById('connectedHostName').textContent = this.hostConnection.hostName;
-
-                    // Listen for host ICE candidates
-                    sharingRef.child(`ice_host/${clientId}`).on('child_added', async (iceSnap) => {
-                        try {
-                            await pc.addIceCandidate(new RTCIceCandidate(iceSnap.val()));
-                            console.log('[PeerExec] Added host ICE candidate');
-                        } catch (e) {
-                            console.error('[PeerExec] ICE error:', e);
-                        }
-                    });
-                } catch (e) {
-                    console.error('[PeerExec] Error setting remote description:', e);
-                    this.showNotification('Connection failed: ' + e.message, 'error');
-                }
-            });
+            document.getElementById('connectedHostName').textContent = this.hostConnection.hostName + ' (Relay)';
 
         } catch (error) {
             console.error('[PeerExec] Connection failed:', error);
@@ -1041,62 +773,24 @@ class PeerExecutionManager {
         }
     }
 
-    setupClientChannel(channel) {
-        this.executionChannel = channel;
-
-        channel.onopen = () => {
-            console.log('[PeerExec] P2P DataChannel connected to host!');
-            this.updateStatusBarButton(true, this.hostConnection?.hostName || 'Host');
-            
-            const terminal = this.ensureTerminalReady();
-            if (terminal) {
-                terminal.writeln('\r\n\x1b[32m[P2P] Connected to host via DataChannel\x1b[0m');
-                terminal.writeln('\x1b[32mReady to execute code...\x1b[0m\r\n');
-            }
-        };
-
-        channel.onclose = () => {
-            console.log('[PeerExec] P2P DataChannel disconnected from host');
-            this.disconnect();
-        };
-
-        channel.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            console.log('[PeerExec] P2P channel message:', message.type);
-
-            const terminal = this.ensureTerminalReady();
-            
-            if (message.type === 'output') {
-                console.log('[PeerExec] P2P output:', message.data);
-                if (terminal) {
-                    terminal.write(message.data);
-                }
-            } else if (message.type === 'result') {
-                console.log('[PeerExec] P2P result:', message);
-                if (terminal) {
-                    if (message.error) {
-                        terminal.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
-                    }
-                    if (typeof message.exitCode !== 'undefined') {
-                        terminal.writeln(`\r\n\x1b[32m...Program finished (exit code ${message.exitCode})\x1b[0m`);
-                    }
-                }
-                if (typeof resetRunButton === 'function') {
-                    resetRunButton();
-                }
-            }
-        };
+    cleanupRelayData() {
+        if (this.relayRef && this.connectionCode) {
+            console.log('[PeerExec] Cleaning up relay data for code:', this.connectionCode);
+            this.relayRef.remove().then(() => {
+                console.log('[PeerExec] Relay data cleaned up successfully');
+            }).catch(error => {
+                console.warn('[PeerExec] Error cleaning up relay data:', error);
+            });
+        }
     }
 
     disconnect() {
-        if (this.hostConnection) {
-            if (this.hostConnection.connection) {
-                this.hostConnection.connection.close();
-            }
-            this.hostConnection = null;
-        }
-
-        this.executionChannel = null;
+        // Clean up relay data
+        this.cleanupRelayData();
+        
+        this.hostConnection = null;
+        this.useFirebaseRelay = false;
+        this.relayRef = null;
 
         // Update UI
         document.getElementById('connectNotConnected').style.display = 'block';
@@ -1114,26 +808,14 @@ class PeerExecutionManager {
     // =========================================================================
 
     isConnectedToHost() {
-        if (this.useFirebaseRelay) {
-            // Only return true if I am a CLIENT (have a host connection)
-            const connected = !!this.hostConnection;
-            console.log('[PeerExec] Relay connection check:', {
-                useFirebaseRelay: this.useFirebaseRelay,
-                hasHostConnection: connected,
-                hostName: this.hostConnection?.hostName
-            });
-            return connected;
-        }
-
-        const channelOpen = this.executionChannel && this.executionChannel.readyState === 'open';
-        const hasHost = !!this.hostConnection;
-        console.log('[PeerExec] P2P connection check:', {
-            channelOpen,
-            hasHost,
-            channelState: this.executionChannel?.readyState,
+        // Only check Firebase Relay connection
+        const connected = this.useFirebaseRelay && !!this.hostConnection;
+        console.log('[PeerExec] Relay connection check:', {
+            useFirebaseRelay: this.useFirebaseRelay,
+            hasHostConnection: connected,
             hostName: this.hostConnection?.hostName
         });
-        return channelOpen && hasHost;
+        return connected;
     }
 
     async executeRemote(code, language) {
@@ -1141,93 +823,48 @@ class PeerExecutionManager {
             throw new Error('Not connected to execution host');
         }
 
-        // Clear terminal before execution and ensure it's ready
         const terminal = this.ensureTerminalReady();
         if (terminal && typeof clearTerminal === 'function') {
             clearTerminal();
         }
 
-        if (this.useFirebaseRelay) {
-            console.log('[PeerExec] Executing via Firebase Relay');
-            return new Promise((resolve, reject) => {
-                this.pendingRelayResolve = resolve;
-                this.pendingRelayReject = reject;
-
-                // Show execution start message
-                if (terminal) {
-                    terminal.writeln(`\x1b[36m[Relay] Executing ${language} code...\x1b[0m\r\n`);
-                }
-
-                this.sendRelayData(JSON.stringify({
-                    type: 'execute',
-                    code,
-                    language
-                }), this.hostConnection.code, 'client');
-
-                // Timeout with better error message
-                setTimeout(() => {
-                    if (this.pendingRelayReject) {
-                        this.pendingRelayReject(new Error('Execution timeout - host may be offline'));
-                        this.pendingRelayResolve = null;
-                        this.pendingRelayReject = null;
-                        
-                        if (terminal) {
-                            terminal.writeln('\r\n\x1b[31mExecution timeout - host may be offline\x1b[0m');
-                        }
-                    }
-                }, 60000);
-            });
-        }
-
-        // Direct P2P execution
-        console.log('[PeerExec] Executing via P2P DataChannel');
-        
-        // Switch to terminal tab to show output
-        if (typeof switchTab === 'function') {
-            switchTab('terminal');
-        }
-        
+        // Only use Firebase Relay
+        console.log('[PeerExec] Executing via Firebase Relay');
         return new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error('Execution timeout'));
-            }, 60000);
+            this.pendingRelayResolve = resolve;
+            this.pendingRelayReject = reject;
 
-            // Temporarily override message handler
-            const originalHandler = this.executionChannel.onmessage;
-            this.executionChannel.onmessage = (event) => {
-                const message = JSON.parse(event.data);
+            if (terminal) {
+                terminal.writeln(`\x1b[36m[Relay] Executing ${language} code...\x1b[0m\r\n`);
+            }
 
-                if (message.type === 'output') {
-                    if (terminal) {
-                        terminal.write(message.data);
-                    }
-                } else if (message.type === 'result') {
-                    clearTimeout(timeout);
-                    this.executionChannel.onmessage = originalHandler;
-                    resolve(message);
-                }
-            };
-
-            this.executionChannel.send(JSON.stringify({
+            this.sendRelayData(JSON.stringify({
                 type: 'execute',
                 code,
                 language
-            }));
+            }), this.hostConnection.code, 'client');
+
+            setTimeout(() => {
+                if (this.pendingRelayReject) {
+                    this.pendingRelayReject(new Error('Execution timeout - host may be offline'));
+                    this.pendingRelayResolve = null;
+                    this.pendingRelayReject = null;
+                    
+                    if (terminal) {
+                        terminal.writeln('\r\n\x1b[31mExecution timeout - host may be offline\x1b[0m');
+                    }
+                }
+            }, 60000);
         });
     }
 
     sendInput(input) {
         if (this.isConnectedToHost()) {
-            if (this.useFirebaseRelay) {
-                console.log('[PeerExec] Sending input via relay:', input);
-                this.sendRelayData(JSON.stringify({
-                    type: 'input',
-                    input
-                }), this.hostConnection.code, 'client');
-            } else {
-                console.log('[PeerExec] Sending input via P2P:', input);
-                this.executionChannel.send(JSON.stringify({ type: 'input', input }));
-            }
+            console.log('[PeerExec] Sending input via relay:', input);
+            this.sendRelayData(JSON.stringify({
+                type: 'input',
+                input
+            }), this.hostConnection.code, 'client');
         } else {
             console.warn('[PeerExec] Cannot send input - not connected to host');
         }
