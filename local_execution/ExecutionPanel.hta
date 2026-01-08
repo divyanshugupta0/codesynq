@@ -260,7 +260,7 @@
         function startAutoRefresh() {
             if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
             if (autoRefreshEnabled) {
-                autoRefreshTimer = window.setInterval(pollForUpdates, 3000);
+                autoRefreshTimer = window.setInterval(pollForUpdates, 2000); // Poll every 2 seconds
             }
         }
         
@@ -331,31 +331,31 @@
             });
         }
         
+        // Use ServerXMLHTTP for better localhost support in HTA
         function doXhr(method, url, cb) {
             try {
-                var x = new ActiveXObject("MSXML2.XMLHTTP");
-                x.open(method, url, true);
-                x.onreadystatechange = function() {
-                    if (x.readyState === 4) {
-                        if (x.status === 200) {
-                            try { cb(null, JSON.parse(x.responseText)); } catch(e) { cb(e, null); }
-                        } else { cb(new Error(x.status), null); }
-                    }
-                };
+                var x = new ActiveXObject("MSXML2.ServerXMLHTTP.6.0");
+                x.setTimeouts(2000, 2000, 2000, 2000); // resolve, connect, send, receive
+                x.open(method, url, false); // Synchronous for reliability
                 x.send();
-            } catch(e) { cb(e, null); }
+                
+                if (x.status === 200) {
+                    try { cb(null, JSON.parse(x.responseText)); } catch(e) { cb(e, null); }
+                } else { 
+                    cb(new Error(x.status), null); 
+                }
+            } catch(e) { 
+                cb(e, null); 
+            }
         }
         
         function doXhrDelete(url, cb) {
             try {
-                var x = new ActiveXObject("MSXML2.XMLHTTP");
-                x.open("DELETE", url, true);
-                x.onreadystatechange = function() {
-                    if (x.readyState === 4) {
-                        cb(x.status === 200);
-                    }
-                };
+                var x = new ActiveXObject("MSXML2.ServerXMLHTTP.6.0");
+                x.setTimeouts(2000, 2000, 2000, 2000);
+                x.open("DELETE", url, false);
                 x.send();
+                cb(x.status === 200);
             } catch(e) { cb(false); }
         }
         
@@ -370,10 +370,6 @@
                     el.innerHTML = '&#9679; Online';
                 }
             });
-        }
-        
-        function doRefresh() {
-            loadHistory();
         }
         
         function loadHistory() {

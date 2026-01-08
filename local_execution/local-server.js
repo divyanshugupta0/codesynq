@@ -4,13 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const https = require('https');
 
 // --- Configuration ---
 const CONFIG = {
     PORT: process.env.LOCAL_EXEC_PORT || 3001,
     HOST: '127.0.0.1',
     TEMP_DIR: path.join(os.tmpdir(), 'codesynq_local_v2'),
-    MAX_EXECUTION_TIME: 30000, // 30 seconds
+    MAX_EXECUTION_TIME: 300000, // 5 minutes
 };
 
 // Ensure temp directory exists
@@ -20,6 +21,8 @@ if (!fs.existsSync(CONFIG.TEMP_DIR)) {
 
 // Global state
 const runningProcesses = new Map();
+const executionHistory = []; // Stores execution records for the panel
+const MAX_HISTORY = 100; // Maximum history entries to keep
 
 // --- Utilities ---
 function generateClientId() {
@@ -142,6 +145,22 @@ function setupProcessHandlers(proc, clientId, filePath, resolve, sendOutput) {
     let fullOutput = '';
     let fullError = '';
 
+    // Timeout Enforcement
+    const timeoutTimer = setTimeout(() => {
+        if (runningProcesses.has(clientId)) {
+            const p = runningProcesses.get(clientId);
+            p.kill();
+            sendOutput({ type: 'stderr', data: `\n[Server] Execution timed out after ${CONFIG.MAX_EXECUTION_TIME}ms.\n` });
+        }
+    }, CONFIG.MAX_EXECUTION_TIME);
+
+    // Keep-Alive Pings (every 15s) to prevent proxy timeouts
+    const pingInterval = setInterval(() => {
+        if (runningProcesses.has(clientId)) {
+            sendOutput({ type: 'ping', data: Date.now() });
+        }
+    }, 15000);
+
     proc.stdout.on('data', (d) => {
         const text = d.toString();
         fullOutput += text;
@@ -155,12 +174,16 @@ function setupProcessHandlers(proc, clientId, filePath, resolve, sendOutput) {
     });
 
     proc.on('close', (exitCode) => {
+        clearTimeout(timeoutTimer);
+        clearInterval(pingInterval);
         runningProcesses.delete(clientId);
         cleanupFile(filePath);
         resolve({ success: exitCode === 0, output: fullOutput, error: fullError, exitCode });
     });
 
     proc.on('error', (err) => {
+        clearTimeout(timeoutTimer);
+        clearInterval(pingInterval);
         resolve({ success: false, error: err.message });
     });
 }
@@ -170,7 +193,7 @@ function setupProcessHandlers(proc, clientId, filePath, resolve, sendOutput) {
 const server = http.createServer((req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-ID');
 
     if (req.method === 'OPTIONS') return res.end();
@@ -182,6 +205,7 @@ const server = http.createServer((req, res) => {
         let body = '';
         req.on('data', c => body += c);
         req.on('end', async () => {
+            const startTime = Date.now();
             try {
                 const { code, language } = JSON.parse(body);
                 const clientId = generateClientId();
@@ -204,10 +228,30 @@ const server = http.createServer((req, res) => {
                 else if (lang === 'c') result = await executeCpp(code, clientId, sendStreamOutput, true);
                 else if (lang === 'cpp' || lang === 'c++') result = await executeCpp(code, clientId, sendStreamOutput, false);
                 else if (lang === 'javascript' || lang === 'node') {
-                    // Add a simple node executor or basic info
                     result = { success: false, error: 'Web-based Node.js execution is handled by the browser or remote server. Local execution is refined for Python, Java, C, and C++.' };
                 }
                 else result = { success: false, error: `Unsupported language: ${language}` };
+
+                const duration = Date.now() - startTime;
+
+                // Save to history
+                executionHistory.unshift({
+                    id: clientId,
+                    language: lang,
+                    codeSnippet: code.substring(0, 500),
+                    codeLength: code.length,
+                    success: result.success,
+                    output: result.output ? result.output.substring(0, 1000) : '',
+                    error: result.error ? result.error.substring(0, 1000) : '',
+                    exitCode: result.exitCode || (result.success ? 0 : 1),
+                    duration: duration,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Trim history if too long
+                if (executionHistory.length > MAX_HISTORY) {
+                    executionHistory.length = MAX_HISTORY;
+                }
 
                 sendChunk({ type: 'result', ...result });
                 res.end();
@@ -252,6 +296,32 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- Status (for ExecutionPanel) ---
+    if (url.pathname === '/status') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            status: 'running',
+            active: runningProcesses.size,
+            historyCount: executionHistory.length,
+            uptime: process.uptime()
+        }));
+        return;
+    }
+
+    // --- History Routes (for ExecutionPanel) ---
+    if (url.pathname === '/history' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ history: executionHistory }));
+        return;
+    }
+
+    if (url.pathname === '/history' && req.method === 'DELETE') {
+        executionHistory.length = 0; // Clear array
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'History cleared' }));
+        return;
+    }
+
     // --- Show Setup Route ---
     if (url.pathname === '/setup' && req.method === 'GET') {
         try {
@@ -267,6 +337,55 @@ const server = http.createServer((req, res) => {
         } catch (err) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+    }
+
+    // --- Update Handler ---
+    if (url.pathname === '/update' && req.method === 'POST') {
+        const updateScriptPath = path.join(CONFIG.TEMP_DIR, 'update_codesynq.bat');
+        const repoUrl = 'https://github.com/divyanshugupta0/codesynq/archive/refs/heads/main.zip'; // Placeholder - Update with real repo if needed
+        // For now, simulate update or fetch specific files? 
+        // A real auto-update usually downloads a zip, extracts it, and overwrites changes
+        // Since this is a local service file, we can just effectively restart or pull latest logic if we had a remote source.
+
+        // Simulating robust update:
+        // 1. Download latest local-server.js
+        // 2. Restart service
+
+        try {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, message: 'Update started. Service will restart shortly...' }));
+
+            console.log('[Update] Auto-update triggered.');
+
+            // Create a self-deleting batch file to handle the update and restart
+            // This prevents file locking issues
+            const updateBatContent = `
+@echo off
+timeout /t 2 /nobreak >nul
+echo [Updater] Stopping service...
+taskkill /F /IM node.exe >nul 2>&1
+echo [Updater] Downloading latest version...
+REM powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/divyanshugupta0/codesynq/main/local_execution/local-server.js' -OutFile '${path.join(__dirname, 'local-server.js')}'"
+echo [Updater] (Dev Mode: Skipped download to preserve local changes)
+echo [Updater] Restarting service...
+start "" "${path.join(__dirname, 'start-service.bat')}"
+del "%~f0"
+            `;
+
+            fs.writeFileSync(updateScriptPath, updateBatContent);
+
+            // Launch the updater detached and exit
+            spawn('cmd', ['/c', updateScriptPath], {
+                detached: true,
+                stdio: 'ignore',
+                cwd: __dirname
+            }).unref();
+
+            setTimeout(() => process.exit(0), 100);
+
+        } catch (err) {
+            console.error('[Update Failed]', err);
         }
         return;
     }

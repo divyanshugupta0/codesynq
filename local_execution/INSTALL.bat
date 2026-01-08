@@ -21,12 +21,9 @@ if %errorLevel% == 0 (
 :: Check if Node.js is installed
 where node >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
-    echo  [ERROR] Node.js is not found!
-    echo  The local execution engine REQUIRES Node.js to run.
-    echo  Please install it from: https://nodejs.org/
+    echo  [WARNING] Node.js is not found!
+    echo  The setup tool will attempt to download and install it automatically.
     echo.
-    pause
-    exit /b 1
 )
 
 echo  [INFO] Launching visual setup tool...
