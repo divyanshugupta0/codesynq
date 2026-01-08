@@ -1340,100 +1340,21 @@ function getMonacoTheme(theme) {
 }
 
 function registerCustomSnippets() {
-    // HTML snippets
-    monaco.languages.registerCompletionItemProvider('html', {
-        provideCompletionItems: function (model, position) {
-            const word = model.getWordUntilPosition(position);
-            const range = {
-                startLineNumber: position.lineNumber,
-                endLineNumber: position.lineNumber,
-                startColumn: word.startColumn,
-                endColumn: word.endColumn
-            };
+    // Helper to create suggestion items
+    function createSuggestion(label, insertText, kind, doc, range, isSnippet = false) {
+        return {
+            label: label,
+            kind: kind,
+            insertText: insertText,
+            insertTextRules: isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+            documentation: doc,
+            range: range
+        };
+    }
 
-            return {
-                suggestions: [
-                    {
-                        label: '.div',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: '<div>\n\t$0\n</div>',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create a div element',
-                        range: range
-                    },
-                    {
-                        label: '.p',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: '<p>$0</p>',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create a paragraph element',
-                        range: range
-                    },
-                    {
-                        label: '.h1',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: '<h1>$0</h1>',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create an h1 heading',
-                        range: range
-                    },
-                    {
-                        label: '.span',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: '<span>$0</span>',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create a span element',
-                        range: range
-                    }
-                ]
-            };
-        }
-    });
-
-    // Java snippets
-    monaco.languages.registerCompletionItemProvider('java', {
-        provideCompletionItems: function (model, position) {
-            const word = model.getWordUntilPosition(position);
-            const range = {
-                startLineNumber: position.lineNumber,
-                endLineNumber: position.lineNumber,
-                startColumn: word.startColumn,
-                endColumn: word.endColumn
-            };
-
-            return {
-                suggestions: [
-                    {
-                        label: 'psvm',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'public static void main(String[] args) {\n\t$0\n}',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create main method',
-                        range: range
-                    },
-                    {
-                        label: 'sout',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'System.out.println($0);',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'System.out.println',
-                        range: range
-                    },
-                    {
-                        label: 'fori',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++) {\n\t$0\n}',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Create for loop',
-                        range: range
-                    }
-                ]
-            };
-        }
-    });
-
-    // JavaScript snippets
+    // JavaScript comprehensive autocomplete
     monaco.languages.registerCompletionItemProvider('javascript', {
+        triggerCharacters: ['.', '(', '"', "'", '`', '/'],
         provideCompletionItems: function (model, position) {
             const word = model.getWordUntilPosition(position);
             const range = {
@@ -1442,32 +1363,69 @@ function registerCustomSnippets() {
                 startColumn: word.startColumn,
                 endColumn: word.endColumn
             };
+            const lineContent = model.getLineContent(position.lineNumber);
+            const textBefore = lineContent.substring(0, position.column - 1);
 
-            return {
-                suggestions: [
-                    {
-                        label: 'log',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'console.log($0);',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Console log',
-                        range: range
-                    },
-                    {
-                        label: 'func',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'function ${1:name}(${2:params}) {\n\t$0\n}',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Function declaration',
-                        range: range
-                    }
-                ]
-            };
+            let suggestions = [];
+
+            // Check if after a dot for method suggestions
+            if (textBefore.endsWith('console.')) {
+                suggestions = ['log', 'error', 'warn', 'info', 'table', 'dir', 'time', 'timeEnd', 'clear', 'group', 'groupEnd', 'trace', 'assert', 'count'].map(m =>
+                    createSuggestion(m, m + '($0)', monaco.languages.CompletionItemKind.Method, `console.${m}()`, range, true));
+            } else if (textBefore.endsWith('Math.')) {
+                suggestions = ['abs', 'ceil', 'floor', 'round', 'max', 'min', 'pow', 'sqrt', 'random', 'sin', 'cos', 'tan', 'PI', 'E', 'log', 'exp'].map(m =>
+                    createSuggestion(m, m, monaco.languages.CompletionItemKind.Method, `Math.${m}`, range));
+            } else if (textBefore.endsWith('Array.')) {
+                suggestions = ['isArray', 'from', 'of'].map(m =>
+                    createSuggestion(m, m + '($0)', monaco.languages.CompletionItemKind.Method, `Array.${m}()`, range, true));
+            } else if (textBefore.endsWith('Object.')) {
+                suggestions = ['keys', 'values', 'entries', 'assign', 'freeze', 'seal', 'create', 'defineProperty', 'getOwnPropertyNames'].map(m =>
+                    createSuggestion(m, m + '($0)', monaco.languages.CompletionItemKind.Method, `Object.${m}()`, range, true));
+            } else if (textBefore.endsWith('JSON.')) {
+                suggestions = [
+                    createSuggestion('parse', 'parse($0)', monaco.languages.CompletionItemKind.Method, 'JSON.parse()', range, true),
+                    createSuggestion('stringify', 'stringify($0)', monaco.languages.CompletionItemKind.Method, 'JSON.stringify()', range, true)
+                ];
+            } else if (textBefore.endsWith('document.')) {
+                suggestions = ['getElementById', 'getElementsByClassName', 'getElementsByTagName', 'querySelector', 'querySelectorAll', 'createElement', 'createTextNode', 'body', 'head', 'title', 'addEventListener', 'removeEventListener'].map(m =>
+                    createSuggestion(m, m.includes('get') || m.includes('query') || m.includes('create') || m.includes('Event') ? m + '($0)' : m, monaco.languages.CompletionItemKind.Method, `document.${m}`, range, true));
+            } else if (textBefore.endsWith('window.')) {
+                suggestions = ['alert', 'confirm', 'prompt', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'localStorage', 'sessionStorage', 'location', 'history', 'navigator', 'fetch', 'open', 'close', 'scrollTo'].map(m =>
+                    createSuggestion(m, m, monaco.languages.CompletionItemKind.Property, `window.${m}`, range));
+            } else if (/\.\s*$/.test(textBefore)) {
+                // Generic array/string methods after any dot
+                suggestions = ['length', 'push', 'pop', 'shift', 'unshift', 'slice', 'splice', 'concat', 'join', 'indexOf', 'lastIndexOf', 'includes', 'find', 'findIndex', 'filter', 'map', 'reduce', 'forEach', 'every', 'some', 'sort', 'reverse', 'split', 'trim', 'toLowerCase', 'toUpperCase', 'replace', 'substring', 'substr', 'charAt', 'charCodeAt', 'toString', 'valueOf', 'keys', 'values', 'entries'].map(m =>
+                    createSuggestion(m, m, monaco.languages.CompletionItemKind.Method, m, range));
+            } else {
+                // Keywords and globals
+                const keywords = ['const', 'let', 'var', 'function', 'async', 'await', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'new', 'class', 'extends', 'constructor', 'super', 'this', 'typeof', 'instanceof', 'import', 'export', 'default', 'from', 'true', 'false', 'null', 'undefined', 'NaN', 'Infinity'];
+                const globals = ['console', 'document', 'window', 'Math', 'Date', 'Array', 'Object', 'String', 'Number', 'Boolean', 'JSON', 'Promise', 'Set', 'Map', 'Symbol', 'RegExp', 'Error', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'fetch', 'alert', 'confirm', 'prompt', 'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent'];
+
+                suggestions = keywords.map(k => createSuggestion(k, k, monaco.languages.CompletionItemKind.Keyword, k, range));
+                suggestions = suggestions.concat(globals.map(g => createSuggestion(g, g, monaco.languages.CompletionItemKind.Variable, g, range)));
+
+                // Snippets
+                suggestions.push(createSuggestion('log', 'console.log($0);', monaco.languages.CompletionItemKind.Snippet, 'Console log', range, true));
+                suggestions.push(createSuggestion('func', 'function ${1:name}(${2:params}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'Function', range, true));
+                suggestions.push(createSuggestion('arrow', 'const ${1:name} = (${2:params}) => {\n\t$0\n};', monaco.languages.CompletionItemKind.Snippet, 'Arrow function', range, true));
+                suggestions.push(createSuggestion('iife', '(function() {\n\t$0\n})();', monaco.languages.CompletionItemKind.Snippet, 'IIFE', range, true));
+                suggestions.push(createSuggestion('forin', 'for (const ${1:key} in ${2:object}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'For...in loop', range, true));
+                suggestions.push(createSuggestion('forof', 'for (const ${1:item} of ${2:array}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'For...of loop', range, true));
+                suggestions.push(createSuggestion('trycatch', 'try {\n\t$0\n} catch (error) {\n\tconsole.error(error);\n}', monaco.languages.CompletionItemKind.Snippet, 'Try-catch', range, true));
+                suggestions.push(createSuggestion('promise', 'new Promise((resolve, reject) => {\n\t$0\n});', monaco.languages.CompletionItemKind.Snippet, 'Promise', range, true));
+                suggestions.push(createSuggestion('asyncfunc', 'async function ${1:name}(${2:params}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'Async function', range, true));
+                suggestions.push(createSuggestion('class', 'class ${1:ClassName} {\n\tconstructor(${2:params}) {\n\t\t$0\n\t}\n}', monaco.languages.CompletionItemKind.Snippet, 'Class', range, true));
+                suggestions.push(createSuggestion('ternary', '${1:condition} ? ${2:true} : ${3:false}', monaco.languages.CompletionItemKind.Snippet, 'Ternary', range, true));
+                suggestions.push(createSuggestion('fetch', 'fetch(${1:url})\n\t.then(response => response.json())\n\t.then(data => {\n\t\t$0\n\t})\n\t.catch(error => console.error(error));', monaco.languages.CompletionItemKind.Snippet, 'Fetch API', range, true));
+            }
+
+            return { suggestions };
         }
     });
 
-    // Python snippets
+    // Python comprehensive autocomplete
     monaco.languages.registerCompletionItemProvider('python', {
+        triggerCharacters: ['.', '(', '"', "'"],
         provideCompletionItems: function (model, position) {
             const word = model.getWordUntilPosition(position);
             const range = {
@@ -1477,31 +1435,72 @@ function registerCustomSnippets() {
                 endColumn: word.endColumn
             };
 
-            return {
-                suggestions: [
-                    {
-                        label: 'def',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'def ${1:function_name}(${2:params}):\n\t$0',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Function definition',
-                        range: range
-                    },
-                    {
-                        label: 'class',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'class ${1:ClassName}:\n\tdef __init__(self${2:, params}):\n\t\t$0',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Class definition',
-                        range: range
-                    }
-                ]
-            };
+            const keywords = ['and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try', 'while', 'with', 'yield'];
+            const builtins = ['print', 'input', 'len', 'range', 'str', 'int', 'float', 'bool', 'list', 'dict', 'tuple', 'set', 'type', 'isinstance', 'issubclass', 'abs', 'all', 'any', 'bin', 'chr', 'dir', 'divmod', 'enumerate', 'eval', 'exec', 'filter', 'format', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'iter', 'locals', 'map', 'max', 'min', 'next', 'oct', 'open', 'ord', 'pow', 'repr', 'reversed', 'round', 'setattr', 'slice', 'sorted', 'sum', 'super', 'vars', 'zip', '__name__', '__main__', 'self'];
+
+            let suggestions = keywords.map(k => createSuggestion(k, k, monaco.languages.CompletionItemKind.Keyword, k, range));
+            suggestions = suggestions.concat(builtins.map(b => createSuggestion(b, b, monaco.languages.CompletionItemKind.Function, b, range)));
+
+            // Snippets
+            suggestions.push(createSuggestion('def', 'def ${1:function_name}(${2:params}):\n\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'Function', range, true));
+            suggestions.push(createSuggestion('class', 'class ${1:ClassName}:\n\tdef __init__(self${2:, params}):\n\t\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'Class', range, true));
+            suggestions.push(createSuggestion('ifmain', 'if __name__ == "__main__":\n\t${0:main()}', monaco.languages.CompletionItemKind.Snippet, 'Main block', range, true));
+            suggestions.push(createSuggestion('tryexcept', 'try:\n\t${1:pass}\nexcept ${2:Exception} as e:\n\t${0:print(e)}', monaco.languages.CompletionItemKind.Snippet, 'Try-except', range, true));
+            suggestions.push(createSuggestion('fori', 'for ${1:i} in range(${2:n}):\n\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'For loop', range, true));
+            suggestions.push(createSuggestion('forin', 'for ${1:item} in ${2:iterable}:\n\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'For-in loop', range, true));
+            suggestions.push(createSuggestion('while', 'while ${1:condition}:\n\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'While loop', range, true));
+            suggestions.push(createSuggestion('with', 'with open(${1:filename}, ${2:mode}) as ${3:f}:\n\t${0:pass}', monaco.languages.CompletionItemKind.Snippet, 'With statement', range, true));
+            suggestions.push(createSuggestion('lambda', 'lambda ${1:x}: ${0:x}', monaco.languages.CompletionItemKind.Snippet, 'Lambda', range, true));
+            suggestions.push(createSuggestion('listcomp', '[${1:x} for ${1:x} in ${2:iterable}]', monaco.languages.CompletionItemKind.Snippet, 'List comprehension', range, true));
+
+            return { suggestions };
         }
     });
 
-    // C/C++ snippets
-    const cppSnippets = {
+    // Java comprehensive autocomplete  
+    monaco.languages.registerCompletionItemProvider('java', {
+        triggerCharacters: ['.', '('],
+        provideCompletionItems: function (model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+            const lineContent = model.getLineContent(position.lineNumber);
+            const textBefore = lineContent.substring(0, position.column - 1);
+
+            let suggestions = [];
+
+            if (textBefore.endsWith('System.out.')) {
+                suggestions = ['println', 'print', 'printf'].map(m =>
+                    createSuggestion(m, m + '($0);', monaco.languages.CompletionItemKind.Method, `System.out.${m}()`, range, true));
+            } else {
+                const keywords = ['abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'package', 'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'try', 'void', 'volatile', 'while', 'true', 'false', 'null'];
+                const types = ['String', 'Integer', 'Double', 'Float', 'Boolean', 'Long', 'Character', 'Byte', 'Short', 'Object', 'System', 'Math', 'ArrayList', 'HashMap', 'HashSet', 'LinkedList', 'StringBuilder', 'Scanner', 'Arrays', 'Collections', 'Exception', 'IOException', 'Thread', 'Runnable'];
+
+                suggestions = keywords.map(k => createSuggestion(k, k, monaco.languages.CompletionItemKind.Keyword, k, range));
+                suggestions = suggestions.concat(types.map(t => createSuggestion(t, t, monaco.languages.CompletionItemKind.Class, t, range)));
+
+                // Snippets
+                suggestions.push(createSuggestion('psvm', 'public static void main(String[] args) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'Main method', range, true));
+                suggestions.push(createSuggestion('sout', 'System.out.println($0);', monaco.languages.CompletionItemKind.Snippet, 'Print', range, true));
+                suggestions.push(createSuggestion('fori', 'for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'For loop', range, true));
+                suggestions.push(createSuggestion('foreach', 'for (${1:type} ${2:item} : ${3:collection}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'For-each', range, true));
+                suggestions.push(createSuggestion('while', 'while (${1:condition}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'While loop', range, true));
+                suggestions.push(createSuggestion('trycatch', 'try {\n\t$0\n} catch (${1:Exception} e) {\n\te.printStackTrace();\n}', monaco.languages.CompletionItemKind.Snippet, 'Try-catch', range, true));
+                suggestions.push(createSuggestion('class', 'public class ${1:ClassName} {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'Class', range, true));
+                suggestions.push(createSuggestion('method', 'public ${1:void} ${2:methodName}(${3:params}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'Method', range, true));
+            }
+
+            return { suggestions };
+        }
+    });
+
+    // HTML comprehensive autocomplete
+    monaco.languages.registerCompletionItemProvider('html', {
+        triggerCharacters: ['<', ' ', '"', '='],
         provideCompletionItems: function (model, position) {
             const word = model.getWordUntilPosition(position);
             const range = {
@@ -1511,31 +1510,85 @@ function registerCustomSnippets() {
                 endColumn: word.endColumn
             };
 
-            return {
-                suggestions: [
-                    {
-                        label: 'main',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'int main() {\n\t$0\n\treturn 0;\n}',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Main function',
-                        range: range
-                    },
-                    {
-                        label: 'printf',
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: 'printf("$1\\n"${2:, args});',
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        documentation: 'Printf statement',
-                        range: range
-                    }
-                ]
+            const tags = ['div', 'span', 'p', 'a', 'img', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'footer', 'nav', 'main', 'section', 'article', 'aside', 'form', 'input', 'button', 'label', 'select', 'option', 'textarea', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'script', 'style', 'link', 'meta', 'title', 'head', 'body', 'html', 'br', 'hr', 'strong', 'em', 'code', 'pre', 'blockquote', 'iframe', 'video', 'audio', 'canvas', 'svg'];
+            const attrs = ['id', 'class', 'style', 'src', 'href', 'alt', 'title', 'type', 'name', 'value', 'placeholder', 'disabled', 'required', 'readonly', 'checked', 'selected', 'width', 'height', 'target', 'rel', 'action', 'method', 'enctype', 'onclick', 'onchange', 'onsubmit', 'onload', 'onerror', 'data-'];
+
+            let suggestions = tags.map(t => createSuggestion(t, `<${t}>$0</${t}>`, monaco.languages.CompletionItemKind.Property, `<${t}> element`, range, true));
+            suggestions = suggestions.concat(attrs.map(a => createSuggestion(a, `${a}="$0"`, monaco.languages.CompletionItemKind.Property, `${a} attribute`, range, true)));
+
+            // Snippets
+            suggestions.push(createSuggestion('html5', '<!DOCTYPE html>\n<html lang="en">\n<head>\n\t<meta charset="UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<title>${1:Document}</title>\n</head>\n<body>\n\t$0\n</body>\n</html>', monaco.languages.CompletionItemKind.Snippet, 'HTML5 boilerplate', range, true));
+            suggestions.push(createSuggestion('link:css', '<link rel="stylesheet" href="${1:style.css}">', monaco.languages.CompletionItemKind.Snippet, 'CSS link', range, true));
+            suggestions.push(createSuggestion('script:src', '<script src="${1:script.js}"></script>', monaco.languages.CompletionItemKind.Snippet, 'Script tag', range, true));
+
+            return { suggestions };
+        }
+    });
+
+    // CSS comprehensive autocomplete
+    monaco.languages.registerCompletionItemProvider('css', {
+        triggerCharacters: [':', ' ', '-'],
+        provideCompletionItems: function (model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
             };
+
+            const properties = ['color', 'background', 'background-color', 'background-image', 'background-size', 'background-position', 'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border', 'border-radius', 'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height', 'display', 'flex', 'flex-direction', 'justify-content', 'align-items', 'gap', 'grid', 'grid-template-columns', 'grid-template-rows', 'position', 'top', 'right', 'bottom', 'left', 'z-index', 'overflow', 'font-family', 'font-size', 'font-weight', 'line-height', 'text-align', 'text-decoration', 'text-transform', 'letter-spacing', 'opacity', 'visibility', 'cursor', 'transition', 'transform', 'animation', 'box-shadow', 'text-shadow', 'filter'];
+            const values = ['none', 'block', 'inline', 'inline-block', 'flex', 'grid', 'absolute', 'relative', 'fixed', 'sticky', 'center', 'left', 'right', 'top', 'bottom', 'space-between', 'space-around', 'space-evenly', 'stretch', 'row', 'column', 'wrap', 'nowrap', 'hidden', 'auto', 'scroll', 'visible', 'bold', 'normal', 'italic', 'underline', 'pointer', 'inherit', 'initial', 'unset', 'transparent', 'currentColor'];
+
+            let suggestions = properties.map(p => createSuggestion(p, `${p}: $0;`, monaco.languages.CompletionItemKind.Property, p, range, true));
+            suggestions = suggestions.concat(values.map(v => createSuggestion(v, v, monaco.languages.CompletionItemKind.Value, v, range)));
+
+            // Snippets
+            suggestions.push(createSuggestion('flexcenter', 'display: flex;\njustify-content: center;\nalign-items: center;', monaco.languages.CompletionItemKind.Snippet, 'Flex center', range, false));
+            suggestions.push(createSuggestion('gridcenter', 'display: grid;\nplace-items: center;', monaco.languages.CompletionItemKind.Snippet, 'Grid center', range, false));
+
+            return { suggestions };
+        }
+    });
+
+    // C/C++ comprehensive autocomplete
+    const cppProvider = {
+        triggerCharacters: ['.', ':', '<', '"'],
+        provideCompletionItems: function (model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+
+            const keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'int', 'long', 'register', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', 'bool', 'true', 'false', 'class', 'public', 'private', 'protected', 'virtual', 'namespace', 'using', 'template', 'typename', 'new', 'delete', 'try', 'catch', 'throw', 'nullptr', 'this', 'friend', 'inline', 'explicit', 'operator', 'override', 'final'];
+            const types = ['int', 'char', 'float', 'double', 'void', 'bool', 'long', 'short', 'unsigned', 'signed', 'size_t', 'string', 'vector', 'map', 'set', 'list', 'queue', 'stack', 'pair', 'array', 'unordered_map', 'unordered_set'];
+            const funcs = ['printf', 'scanf', 'cout', 'cin', 'endl', 'getline', 'strlen', 'strcpy', 'strcmp', 'malloc', 'free', 'sizeof', 'new', 'delete', 'push_back', 'pop_back', 'begin', 'end', 'size', 'empty', 'clear', 'insert', 'erase', 'find', 'sort', 'reverse', 'swap'];
+
+            let suggestions = keywords.map(k => createSuggestion(k, k, monaco.languages.CompletionItemKind.Keyword, k, range));
+            suggestions = suggestions.concat(types.map(t => createSuggestion(t, t, monaco.languages.CompletionItemKind.Class, t, range)));
+            suggestions = suggestions.concat(funcs.map(f => createSuggestion(f, f, monaco.languages.CompletionItemKind.Function, f, range)));
+
+            // Snippets
+            suggestions.push(createSuggestion('main', 'int main() {\n\t$0\n\treturn 0;\n}', monaco.languages.CompletionItemKind.Snippet, 'Main function', range, true));
+            suggestions.push(createSuggestion('mainargs', 'int main(int argc, char *argv[]) {\n\t$0\n\treturn 0;\n}', monaco.languages.CompletionItemKind.Snippet, 'Main with args', range, true));
+            suggestions.push(createSuggestion('include', '#include <${1:iostream}>', monaco.languages.CompletionItemKind.Snippet, 'Include', range, true));
+            suggestions.push(createSuggestion('fori', 'for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'For loop', range, true));
+            suggestions.push(createSuggestion('while', 'while (${1:condition}) {\n\t$0\n}', monaco.languages.CompletionItemKind.Snippet, 'While loop', range, true));
+            suggestions.push(createSuggestion('class', 'class ${1:ClassName} {\npublic:\n\t${1:ClassName}() {\n\t\t$0\n\t}\n};', monaco.languages.CompletionItemKind.Snippet, 'Class', range, true));
+            suggestions.push(createSuggestion('struct', 'struct ${1:StructName} {\n\t$0\n};', monaco.languages.CompletionItemKind.Snippet, 'Struct', range, true));
+            suggestions.push(createSuggestion('cout', 'std::cout << $0 << std::endl;', monaco.languages.CompletionItemKind.Snippet, 'Cout', range, true));
+            suggestions.push(createSuggestion('cin', 'std::cin >> $0;', monaco.languages.CompletionItemKind.Snippet, 'Cin', range, true));
+            suggestions.push(createSuggestion('printf', 'printf("$1\\n"${2:, args});', monaco.languages.CompletionItemKind.Snippet, 'Printf', range, true));
+
+            return { suggestions };
         }
     };
 
-    monaco.languages.registerCompletionItemProvider('c', cppSnippets);
-    monaco.languages.registerCompletionItemProvider('cpp', cppSnippets);
+    monaco.languages.registerCompletionItemProvider('c', cppProvider);
+    monaco.languages.registerCompletionItemProvider('cpp', cppProvider);
 }
 
 function addTab(name, content = '', language = 'javascript') {

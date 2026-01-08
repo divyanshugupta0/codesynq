@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
 const cors = require('cors');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const app = express();
 app.use(cors());
@@ -179,6 +183,11 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- Remote Execution (Main Server) ---
+    socket.on('execute-code', (data) => {
+        handleRemoteExecution(socket, data);
+    });
+
     // --- File Operations ---
     // (Sync file creation/deletion later if needed)
 
@@ -204,6 +213,195 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// --- Execution Helpers ---
+const MAX_EXECUTION_TIME = 300000; // 5 Minutes
+
+async function handleRemoteExecution(socket, data) {
+    const { code, language, executionId } = data;
+    if (!code) return;
+
+    const lang = (language || '').toLowerCase();
+
+    // Notify start
+    socket.emit('clear-terminal');
+
+    try {
+        let result;
+        if (lang === 'python') result = await runPython(code, socket);
+        else if (lang === 'c' || lang === 'cpp' || lang === 'c++') result = await runCpp(code, socket, lang);
+        else if (lang === 'java') result = await runJava(code, socket);
+        else if (lang === 'javascript' || lang === 'node') result = await runNode(code, socket);
+        else throw new Error(`Language '${lang}' not supported on this server`);
+
+        socket.emit('execution-result', {
+            executionId,
+            language: lang,
+            success: result.success,
+            output: result.output,
+            error: result.error,
+            exitCode: result.exitCode
+        });
+    } catch (e) {
+        socket.emit('execution-result', {
+            executionId,
+            language: lang,
+            success: false,
+            error: e.message
+        });
+    }
+}
+
+function runPython(code, socket) {
+    return new Promise((resolve) => {
+        const fileName = `exec_${Date.now()}_${Math.random().toString(36).substr(2)}.py`;
+        const filePath = path.join(os.tmpdir(), fileName);
+
+        fs.writeFileSync(filePath, code);
+
+        // Use -u for unbuffered output
+        // Try 'python3' first, catch error? Or just 'python' if windows.
+        // On many cloud envs (Linux), python3 is safer.
+        const cmd = process.platform === 'win32' ? 'python' : 'python3';
+
+        const proc = spawn(cmd, ['-u', filePath]);
+        setupProcess(proc, socket, filePath, resolve);
+    });
+}
+
+function runNode(code, socket) {
+    return new Promise((resolve) => {
+        const fileName = `exec_${Date.now()}_${Math.random().toString(36).substr(2)}.js`;
+        const filePath = path.join(os.tmpdir(), fileName);
+
+        fs.writeFileSync(filePath, code);
+
+        const proc = spawn('node', [filePath]);
+        setupProcess(proc, socket, filePath, resolve);
+    });
+}
+
+function runCpp(code, socket, lang) {
+    return new Promise((resolve) => {
+        const ext = lang === 'c' ? 'c' : 'cpp';
+        const compiler = lang === 'c' ? 'gcc' : 'g++';
+        const fileName = `exec_${Date.now()}_${Math.random().toString(36).substr(2)}`;
+        const srcPath = path.join(os.tmpdir(), `${fileName}.${ext}`);
+        // Windows uses .exe, Linux has no extension usually
+        const outPath = path.join(os.tmpdir(), `${fileName}${process.platform === 'win32' ? '.exe' : ''}`);
+
+        fs.writeFileSync(srcPath, code);
+
+        // Compile
+        socket.emit('terminal-output', { type: 'stdout', text: `Compiling ${ext}...\n` });
+        const compile = spawn(compiler, [srcPath, '-o', outPath]);
+
+        let compileErr = '';
+        compile.stderr.on('data', d => {
+            const t = d.toString();
+            compileErr += t;
+            socket.emit('terminal-output', { type: 'stderr', text: t });
+        });
+
+        compile.on('close', (code) => {
+            if (code !== 0) {
+                fs.unlink(srcPath, () => { });
+                return resolve({ success: false, error: 'Compilation failed', output: compileErr });
+            }
+            // Run
+            socket.emit('terminal-output', { type: 'stdout', text: `Running...\n` });
+            const proc = spawn(outPath, []);
+            setupProcess(proc, socket, [srcPath, outPath], resolve);
+        });
+
+        compile.on('error', (err) => {
+            fs.unlink(srcPath, () => { });
+            resolve({ success: false, error: 'Compiler not found: ' + err.message });
+        });
+    });
+}
+
+function runJava(code, socket) {
+    return new Promise((resolve) => {
+        // Extract class name
+        const match = code.match(/public\s+class\s+(\w+)/);
+        const className = match ? match[1] : 'Main';
+        const dir = path.join(os.tmpdir(), `java_${Date.now()}_${Math.random().toString(36).substr(2)}`);
+
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+
+        const srcPath = path.join(dir, `${className}.java`);
+        fs.writeFileSync(srcPath, code);
+
+        socket.emit('terminal-output', { type: 'stdout', text: `Compiling Java...\n` });
+        const compile = spawn('javac', [srcPath]);
+
+        let compileErr = '';
+        compile.stderr.on('data', d => {
+            const t = d.toString();
+            compileErr += t;
+            socket.emit('terminal-output', { type: 'stderr', text: t });
+        });
+
+        compile.on('close', (code) => {
+            if (code !== 0) {
+                fs.rm(dir, { recursive: true, force: true }, () => { });
+                return resolve({ success: false, error: 'Compilation failed', output: compileErr });
+            }
+            socket.emit('terminal-output', { type: 'stdout', text: `Running...\n` });
+            const proc = spawn('java', ['-cp', dir, className]);
+            setupProcess(proc, socket, dir, resolve, true);
+        });
+
+        compile.on('error', (err) => {
+            fs.rm(dir, { recursive: true, force: true }, () => { });
+            resolve({ success: false, error: 'JDK not found: ' + err.message });
+        });
+    });
+}
+
+function setupProcess(proc, socket, cleanupTarget, resolve, isDirCleanup = false) {
+    let output = '';
+    let error = '';
+
+    const timeout = setTimeout(() => {
+        proc.kill();
+        const msg = `\n[Server] Execution timed out after ${MAX_EXECUTION_TIME / 1000}s.\n`;
+        socket.emit('terminal-output', { type: 'stderr', text: msg });
+        error += msg;
+    }, MAX_EXECUTION_TIME);
+
+    proc.stdout.on('data', (d) => {
+        const text = d.toString();
+        output += text;
+        socket.emit('terminal-output', { type: 'stdout', text });
+    });
+
+    proc.stderr.on('data', (d) => {
+        const text = d.toString();
+        error += text;
+        socket.emit('terminal-output', { type: 'stderr', text });
+    });
+
+    proc.on('close', (code) => {
+        clearTimeout(timeout);
+        // Cleanup
+        if (isDirCleanup) {
+            fs.rm(cleanupTarget, { recursive: true, force: true }, () => { });
+        } else if (Array.isArray(cleanupTarget)) {
+            cleanupTarget.forEach(f => fs.unlink(f, () => { }));
+        } else {
+            fs.unlink(cleanupTarget, () => { });
+        }
+
+        resolve({ success: code === 0, output, error, exitCode: code });
+    });
+
+    proc.on('error', (err) => {
+        clearTimeout(timeout);
+        resolve({ success: false, error: err.message });
+    });
+}
 
 const PORT = 3002;
 server.listen(PORT, () => {

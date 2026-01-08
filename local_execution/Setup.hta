@@ -723,18 +723,18 @@
                 log("Creating desktop shortcuts...", "info");
                 document.getElementById('modal-progress').style.width = "70%";
                 
+                // Use the copied icon from installation directory (with index 0)
+                var iconPath = targetDir + "\\codesynq.ico,0";
+                
                 // Service Manager shortcut
                 var sc1 = shell.CreateShortcut(desktop + "\\CodeSynq Service Manager.lnk");
                 sc1.TargetPath = "mshta.exe";
                 sc1.Arguments = "\"" + targetDir + "\\Setup.hta\"";
                 sc1.WorkingDirectory = targetDir;
-                if (fso.FileExists(targetDir + "\\codesynq.ico")) {
-                    sc1.IconLocation = targetDir + "\\codesynq.ico";
-                } else {
-                    sc1.IconLocation = sysRoot + "\\System32\\shell32.dll,21";
-                }
+                sc1.IconLocation = iconPath;
                 sc1.Description = "Manage CodeSynq Local Execution Service";
                 sc1.Save();
+                log("Created: CodeSynq Service Manager.lnk", "success");
                 
                 // Execution Panel shortcut
                 if (fso.FileExists(targetDir + "\\ExecutionPanel.hta")) {
@@ -742,13 +742,10 @@
                     sc2.TargetPath = "mshta.exe";
                     sc2.Arguments = "\"" + targetDir + "\\ExecutionPanel.hta\"";
                     sc2.WorkingDirectory = targetDir;
-                    if (fso.FileExists(targetDir + "\\codesynq.ico")) {
-                        sc2.IconLocation = targetDir + "\\codesynq.ico";
-                    } else {
-                        sc2.IconLocation = sysRoot + "\\System32\\shell32.dll,144";
-                    }
+                    sc2.IconLocation = iconPath;
                     sc2.Description = "View CodeSynq Execution History";
                     sc2.Save();
+                    log("Created: CodeSynq Execution Panel.lnk", "success");
                 }
                 
                 // Step 5: Register startup
