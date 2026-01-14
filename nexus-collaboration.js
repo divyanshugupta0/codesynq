@@ -7,7 +7,7 @@ class CollaborationManager {
     constructor() {
         // --- Configuration ---
         // Default to local, but allow override or prod URL
-        this.serverUrl = 'https://codesynq-collab-engine.onrender.com/';
+        this.serverUrl = 'https://codesynqs-collab-engine.onrender.com/';
         // Note: For Render deployment, User will update this URL later.
 
         // --- State ---
@@ -87,7 +87,10 @@ class CollaborationManager {
         const username = this.getCurrentUsername();
         this.showLoading(isHost ? 'Creating Session...' : `Joining ${roomId}...`);
 
-        this.socket = io(this.serverUrl);
+        this.socket = io(this.serverUrl, {
+            withCredentials: true,
+            transports: ['websocket', 'polling'] // Prefer WebSocket, fallback to polling
+        });
 
         this.socket.on('connect', () => {
             console.log('Connected to Server:', this.socket.id);
