@@ -8176,9 +8176,14 @@ function handleNewFile(mode) {
     // Remove dot for detection
     const language = detectLanguageFromExtension(extension.replace('.', ''));
 
-    // For cloud mode, open the Save to Cloud modal instead
+    // For cloud mode, open the Save to Cloud modal (with new file flag)
     if (mode === 'cloud') {
-        openSaveToCloudModal(cleanName, extension);
+        // Close the new file modal first
+        const modal = document.getElementById('newFileModalRefinedV3');
+        if (modal) modal.style.display = 'none';
+
+        // Open save to cloud modal with isNewFile=true flag
+        openSaveToCloudModal(cleanName, extension, null, true);
         return;
     }
 
@@ -9269,7 +9274,8 @@ let cloudNavState = {
     currentFolderKey: null, // Current folder key (null = root)
     currentFirebasePath: null, // Full Firebase path to current folder (e.g., "savedFolders/abc" or "savedFolders/abc/subfolders/xyz")
     allFolders: {}, // Cached folder data
-    allFiles: {} // Cached standalone files
+    allFiles: {}, // Cached standalone files
+    isNewFileCreation: false // Flag to track if we're creating a new file vs saving existing
 };
 
 // Handle "Save As" action from File menu
@@ -9348,7 +9354,7 @@ function handleSaveAs() {
 }
 
 // Open the Save to Cloud modal
-function openSaveToCloudModal(fileName, extension, initialContext = null) {
+function openSaveToCloudModal(fileName, extension, initialContext = null, isNewFile = false) {
     if (!window.currentUser) {
         showNotification('Please login first to save to cloud!');
         return;
@@ -9357,6 +9363,9 @@ function openSaveToCloudModal(fileName, extension, initialContext = null) {
     // Set file name and extension in modal
     document.getElementById('cloudFileNameInput').value = fileName || '';
     document.getElementById('cloudFileExtensionSelect').value = extension || '.js';
+
+    // Track if this is a new file creation
+    cloudNavState.isNewFileCreation = isNewFile;
 
     // Set navigation state
     if (initialContext) {
@@ -9397,6 +9406,8 @@ function openSaveToCloudModal(fileName, extension, initialContext = null) {
 function closeSaveToCloudModal() {
     document.getElementById('saveToCloudModal').style.display = 'none';
     hideCloudNewFolderDialog();
+    // Reset new file creation flag when modal is closed (in case user cancels)
+    cloudNavState.isNewFileCreation = false;
 }
 
 // Load cloud browser content based on current path
@@ -9849,12 +9860,53 @@ function saveToCurrentCloudLocation() {
 
 // Complete save operation
 function completeSave(fullFileName, language, folderInfo, standaloneKey) {
+    // Check if this was a new file creation BEFORE closing modal (which resets the flag)
+    const wasNewFileCreation = cloudNavState.isNewFileCreation;
+
     // Close modals
     closeSaveToCloudModal();
     const newFileModal = document.getElementById('newFileModalRefinedV3');
     if (newFileModal) newFileModal.style.display = 'none';
 
-    // Update current tab
+    // If this is a new file creation, create a new tab instead of updating existing
+    if (wasNewFileCreation) {
+        // Get default code for the language
+        const defaultCode = typeof getDefaultCode === 'function' ? getDefaultCode(language) : '';
+
+        // Create new tab with the file info
+        addTab(fullFileName, defaultCode, language);
+        const newTabIndex = editorTabs.length - 1;
+
+        // Set cloud save info on the new tab
+        if (folderInfo) {
+            editorTabs[newTabIndex].folderFileIndex = folderInfo.fileIndex;
+            editorTabs[newTabIndex].folderFirebasePath = folderInfo.firebasePath;
+            editorTabs[newTabIndex].standaloneKey = null;
+            currentSavedFolder = {
+                key: folderInfo.key,
+                name: folderInfo.name,
+                startIndex: newTabIndex - folderInfo.fileIndex,
+                firebasePath: folderInfo.firebasePath
+            };
+        } else if (standaloneKey) {
+            editorTabs[newTabIndex].standaloneKey = standaloneKey;
+            editorTabs[newTabIndex].folderFileIndex = null;
+            editorTabs[newTabIndex].folderFirebasePath = null;
+            currentSavedFolder = null;
+        }
+
+        editorTabs[newTabIndex].hasChanges = false;
+
+        // Render tabs and switch to the new one
+        renderTabs();
+        switchToTab(newTabIndex);
+
+        const location = folderInfo ? `"${folderInfo.name}"` : 'cloud';
+        showNotification(`Created and saved "${fullFileName}" to ${location}!`);
+        return;
+    }
+
+    // Update current tab (existing file save)
     if (editorTabs[activeTabIndex]) {
         editorTabs[activeTabIndex].name = fullFileName;
         editorTabs[activeTabIndex].language = language;
