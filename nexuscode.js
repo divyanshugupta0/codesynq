@@ -1758,18 +1758,103 @@ function closeTab(index) {
 window.closeTab = closeTab;
 
 function handleTabModeSave() {
-    if (!window.currentUser) {
-        showNotification('Please login first to save!');
+    // Get the currently active tab
+    const activeTab = editorTabs[activeTabIndex];
+    if (!activeTab) {
+        showNotification('No active file to save!');
         return;
     }
 
-    if (currentSavedFolder) {
-        // Update existing folder
-        updateSavedFolder();
-    } else {
-        // Save as new folder
-        showSaveFolderModal();
+    // Update the current tab's content from editor
+    if (editor) {
+        activeTab.content = editor.getValue();
+        activeTab.language = document.getElementById('languageSelect').value;
     }
+
+    // Check if this is a standalone cloud file
+    if (activeTab.standaloneKey) {
+        if (!window.currentUser) {
+            showNotification('Please login first to save!');
+            return;
+        }
+        saveStandaloneFileToCloud();
+        return;
+    }
+
+    // Check if this tab belongs to a Firebase folder (has folderFileIndex set)
+    const isFolderFile = activeTab.folderFileIndex !== null &&
+        activeTab.folderFileIndex !== undefined &&
+        currentSavedFolder;
+
+    if (isFolderFile) {
+        // FIREBASE FILE: Save to Firebase
+        if (!window.currentUser) {
+            showNotification('Please login first to save!');
+            return;
+        }
+        saveActiveFileToFirebase();
+    } else {
+        // TEMP FILE: Save only to localStorage (no popup needed)
+        activeTab.hasChanges = false;
+        saveEditorState(); // Saves all tabs to localStorage
+        renderTabs();
+        showNotification(`Saved "${activeTab.name}" locally!`);
+    }
+}
+
+// Save standalone file to cloud
+function saveStandaloneFileToCloud() {
+    const activeTab = editorTabs[activeTabIndex];
+    if (!activeTab || !activeTab.standaloneKey || !window.currentUser) return;
+
+    const codeData = {
+        name: activeTab.name,
+        content: activeTab.content,
+        language: activeTab.language,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        lastModified: new Date().toISOString()
+    };
+
+    database.ref(`users/${window.currentUser.uid}/savedCodes/${activeTab.standaloneKey}`).set(codeData).then(() => {
+        activeTab.hasChanges = false;
+        renderTabs();
+        showNotification(`Saved "${activeTab.name}" to cloud!`);
+    }).catch((error) => {
+        showNotification('Error saving file: ' + error.message);
+    });
+}
+
+
+// Save only the currently active file to Firebase folder
+function saveActiveFileToFirebase() {
+    if (!currentSavedFolder || !window.currentUser) return;
+
+    const activeTab = editorTabs[activeTabIndex];
+    if (!activeTab || activeTab.folderFileIndex === null || activeTab.folderFileIndex === undefined) return;
+
+    // Build the Firebase path using folderFirebasePath (for nested folders) or fall back to currentSavedFolder.key
+    const fileIndex = activeTab.folderFileIndex;
+    const basePath = activeTab.folderFirebasePath || currentSavedFolder.firebasePath || `savedFolders/${currentSavedFolder.key}`;
+    const filePath = `users/${window.currentUser.uid}/${basePath}/files/${fileIndex}`;
+
+    const fileData = {
+        name: activeTab.name,
+        content: activeTab.content,
+        language: activeTab.language
+    };
+
+    // Update only this specific file in Firebase
+    database.ref(filePath).set(fileData).then(() => {
+        activeTab.hasChanges = false;
+        renderTabs();
+
+        // Also update lastModified on the folder
+        database.ref(`users/${window.currentUser.uid}/${basePath}/lastModified`).set(new Date().toISOString());
+
+        showNotification(`Saved "${activeTab.name}" to cloud!`);
+    }).catch((error) => {
+        showNotification('Error saving file: ' + error.message);
+    });
 }
 
 let currentSavedFolder = null;
@@ -1861,37 +1946,71 @@ window.renameTab = renameTab;
 
 let currentFolder = null;
 
-function openFolderFiles(folderKey, folderData) {
+function openFolderFiles(folderKey, folderData, firebasePath) {
     // Save current scroll position before switching to folder view
     const list = document.getElementById('savedCodesList');
     if (list && list.style.display !== 'none') {
         savedScrollPositions.mainList = list.scrollTop;
     }
 
-    currentFolder = { key: folderKey, ...folderData };
+    // fallback if path not provided (shouldn't happen with updated calls, but safety)
+    const currentPath = firebasePath || `savedFolders/${folderKey}`;
+
+    currentFolder = { key: folderKey, ...folderData, firebasePath: currentPath };
 
     document.getElementById('savedCodesTitle').textContent = `${folderData.name} Files`;
     document.getElementById('backToList').style.display = 'inline-block';
 
     list.innerHTML = '';
 
-    folderData.files.forEach((file, index) => {
-        const fileItem = document.createElement('div');
-        fileItem.className = 'saved-code-item';
-        fileItem.innerHTML = `
-            <div class="saved-code-info">
-                <div class="saved-code-name">${file.name}</div>
-                <div class="saved-code-meta">${file.language} • ${file.content.split('\n').length} lines</div>
-            </div>
-            <div class="saved-code-language">${file.language}</div>
-        `;
+    // Use currentFolder for navigation tracking if needed
+    // Render subfolders first
+    if (folderData.subfolders) {
+        Object.entries(folderData.subfolders).forEach(([subKey, subData]) => {
+            const folderItem = document.createElement('div');
+            folderItem.className = 'saved-code-item folder-item';
+            folderItem.innerHTML = `
+                <div class="saved-code-info">
+                    <div class="saved-code-name"><i class="fas fa-folder"></i> ${subData.name}</div>
+                    <div class="saved-code-meta">
+                        ${subData.files ? subData.files.length : 0} files
+                    </div>
+                </div>
+                <div class="saved-code-language">Folder</div>
+            `;
 
-        fileItem.addEventListener('click', () => {
-            showCodePreview(file, `folder_${folderKey}_${index}`, true);
+            folderItem.addEventListener('click', () => {
+                // Navigate deeper
+                openFolderFiles(subKey, subData, `${currentPath}/subfolders/${subKey}`);
+            });
+
+            list.appendChild(folderItem);
         });
+    }
 
-        list.appendChild(fileItem);
-    });
+    // Render files
+    if (folderData.files) {
+        folderData.files.forEach((file, index) => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'saved-code-item';
+            fileItem.innerHTML = `
+                <div class="saved-code-info">
+                    <div class="saved-code-name">${file.name}</div>
+                    <div class="saved-code-meta">${file.language} • ${file.content.split('\n').length} lines</div>
+                </div>
+                <div class="saved-code-language">${file.language}</div>
+            `;
+
+            fileItem.addEventListener('click', () => {
+                showCodePreview(file, `folder_${folderKey}_${index}`, true);
+            });
+
+            list.appendChild(fileItem);
+        });
+    } else if (!folderData.subfolders) {
+        // No files and no subfolders
+        list.innerHTML = '<div style="text-align: center; color: #808080; padding: 20px;">This folder is empty</div>';
+    }
 
     // Reset folder scroll position to top when first opening
     savedScrollPositions.folderList = 0;
@@ -1906,53 +2025,65 @@ function loadFolderInTabMode() {
     if (!currentFolder) return;
 
     // Enable tab mode directly without popup since folder has language info
-    // Enable tab mode directly without popup since folder has language info
     if (!isTabMode) {
         isTabMode = true;
         document.getElementById('tabBar').style.display = 'flex';
     }
 
-    // Clear existing tabs
-    editorTabs = [];
-    activeTabIndex = 0;
-
-    // Load all files as tabs
-    currentFolder.files.forEach((file, index) => {
-        addTab(file.name, file.content, file.language);
+    // Mark existing tabs as temp files (not part of folder)
+    editorTabs.forEach(tab => {
+        tab.folderFileIndex = null; // Not part of any folder
     });
+
+    // Remember the starting index for folder files
+    const folderStartIndex = editorTabs.length;
+
+    // Load all files as tabs (append to existing tabs)
+    // Ensure we have a path (Fallback for legacy state)
+    const fPath = currentFolder.firebasePath || `savedFolders/${currentFolder.key}`;
+    console.log('Loading folder in tab mode with path:', fPath); // DEBUG
+
+    if (currentFolder.files) {
+        currentFolder.files.forEach((file, index) => {
+            const tab = addTab(file.name, file.content, file.language);
+            tab.folderFileIndex = index; // Track the file's index in the Firebase folder
+            tab.folderFirebasePath = fPath; // Track full path for nested folders
+        });
+    }
 
     // Track the loaded folder as current saved folder
     currentSavedFolder = {
         key: currentFolder.key,
-        name: currentFolder.name
+        name: currentFolder.name,
+        startIndex: folderStartIndex, // Remember where folder files start
+        firebasePath: fPath // Store full path
     };
 
-    // Load first tab properly with correct language and content
-    if (editorTabs.length > 0 && editor && monaco) {
-        const firstTab = editorTabs[0];
+    // Switch to the first file of the loaded folder
+    if (currentFolder.files && currentFolder.files.length > 0 && editor && monaco) {
+        activeTabIndex = folderStartIndex;
+        const firstFolderTab = editorTabs[folderStartIndex];
 
         // Set language selector to first file's language
         const languageSelect = document.getElementById('languageSelect');
-        languageSelect.value = firstTab.language;
-        languageSelect.dataset.previousValue = firstTab.language;
+        languageSelect.value = firstFolderTab.language;
+        languageSelect.dataset.previousValue = firstFolderTab.language;
 
         // Set Monaco editor language
-        const language = getMonacoLanguage(firstTab.language);
+        const language = getMonacoLanguage(firstFolderTab.language);
         monaco.editor.setModelLanguage(editor.getModel(), language);
 
         // Load the actual file content
-        editor.setValue(firstTab.content);
+        editor.setValue(firstFolderTab.content);
 
-        updateLivePreviewVisibility(firstTab.language);
-
-        activeTabIndex = 0;
+        updateLivePreviewVisibility(firstFolderTab.language);
     }
 
     renderTabs();
     document.getElementById('savedCodesModal').style.display = 'none';
     resetSavedCodesModal();
     cleanupSavedCodesListeners();
-    showNotification(`Loaded ${currentFolder.files.length} files in tab mode!`);
+    showNotification(`Loaded ${currentFolder.files ? currentFolder.files.length : 0} files in tab mode!`);
 }
 
 function deleteSavedFolder() {
@@ -2097,14 +2228,18 @@ function saveFolderWithName() {
 
     const folderRef = database.ref(`users/${window.currentUser.uid}/savedFolders`).push();
     folderRef.set(folderData).then(() => {
-        // Track the saved folder
+        // Track the saved folder with startIndex
         currentSavedFolder = {
             key: folderRef.key,
-            name: folderName
+            name: folderName,
+            startIndex: 0 // All current tabs are part of this folder
         };
 
-        // Reset hasChanges for all tabs
-        editorTabs.forEach(tab => tab.hasChanges = false);
+        // Set folderFileIndex on all tabs and reset hasChanges
+        editorTabs.forEach((tab, index) => {
+            tab.folderFileIndex = index;
+            tab.hasChanges = false;
+        });
         renderTabs();
         updateSaveButtonText(); // Update save button to show folder saved
 
@@ -3240,7 +3375,7 @@ function showSavedCodes() {
                     <div class="saved-code-language">Folder</div>
                 `;
 
-                item.addEventListener('click', () => openFolderFiles(key, folderData));
+                item.addEventListener('click', () => openFolderFiles(key, folderData, `savedFolders/${key}`));
                 list.appendChild(item);
             });
         }
@@ -7579,15 +7714,36 @@ async function deleteSavedFile(data) {
 // Saved folder actions
 function loadSavedFolder(data) {
     if (data.folderData.files && data.folderData.files.length > 0) {
-        editorTabs = [];
-        activeTabIndex = 0;
-        data.folderData.files.forEach((file) => {
-            addTab(file.name, file.content, file.language);
+        // Mark existing tabs as temp files (not part of folder)
+        editorTabs.forEach(tab => {
+            tab.folderFileIndex = null;
         });
-        currentSavedFolder = { key: data.key, name: data.folderData.name };
+
+        // Remember where folder files start
+        const folderStartIndex = editorTabs.length;
+
+        // Ensure path (fallback)
+        const fPath = data.firebasePath || `savedFolders/${data.key}`;
+        console.log('loadSavedFolder called with path:', fPath);
+
+        // Append folder files to existing tabs (don't clear existing tabs)
+        data.folderData.files.forEach((file, index) => {
+            const tab = addTab(file.name, file.content, file.language);
+            tab.folderFileIndex = index; // Track the file's index in Firebase folder
+            tab.folderFirebasePath = fPath; // Store path
+        });
+
+        // Track the saved folder with startIndex
+        currentSavedFolder = {
+            key: data.key,
+            name: data.folderData.name,
+            startIndex: folderStartIndex,
+            firebasePath: fPath
+        };
+
         if (editorTabs.length > 0) {
             renderTabs();
-            switchToTab(0);
+            switchToTab(folderStartIndex); // Switch to first folder file
         }
         showNotification(`Loaded folder "${data.folderData.name}" with ${data.folderData.files.length} files`);
     }
@@ -7624,7 +7780,8 @@ function downloadFolder(data) {
 
 async function deleteSavedFolder(data) {
     if (await customConfirm(`Delete folder "${data.folderData.name}" and all its files?`)) {
-        database.ref(`users/${window.currentUser.uid}/savedFolders/${data.key}`).remove().then(() => {
+        const path = data.firebasePath || `savedFolders/${data.key}`;
+        database.ref(`users/${window.currentUser.uid}/${path}`).remove().then(() => {
             showNotification(`Deleted folder "${data.folderData.name}"`);
         });
     }
@@ -7632,14 +7789,28 @@ async function deleteSavedFolder(data) {
 
 // Folder file actions
 function openFolderFile(data) {
+    console.log('openFolderFile called with data:', data);
+
     const existingTabIdx = editorTabs.findIndex(t => t.name === data.file.name);
     if (existingTabIdx >= 0) {
         // Update the tab content with Firebase data to ensure it's fresh
         editorTabs[existingTabIdx].content = data.file.content;
         editorTabs[existingTabIdx].language = data.file.language;
+        // Update Firebase linkage if provided
+        if (data.fileIndex !== undefined) {
+            editorTabs[existingTabIdx].folderFileIndex = data.fileIndex;
+            editorTabs[existingTabIdx].folderFirebasePath = data.firebasePath;
+            console.log('Updated existing tab path to:', data.firebasePath);
+        }
         switchToTab(existingTabIdx);
     } else {
-        addTab(data.file.name, data.file.content, data.file.language);
+        const tab = addTab(data.file.name, data.file.content, data.file.language);
+        // Link to Firebase
+        if (data.fileIndex !== undefined) {
+            tab.folderFileIndex = data.fileIndex;
+            tab.folderFirebasePath = data.firebasePath;
+            console.log('Set new tab path to:', data.firebasePath);
+        }
         const newTabIndex = editorTabs.length - 1;
         renderTabs();
         switchToTab(newTabIndex);
@@ -7661,7 +7832,8 @@ function shareFolderFile(data) {
 async function deleteFolderFile(data) {
     if (await customConfirm(`Delete "${data.file.name}" from folder?`)) {
         data.folderData.files.splice(data.fileIndex, 1);
-        database.ref(`users/${window.currentUser.uid}/savedFolders/${data.folderKey}`).update({
+        const path = data.firebasePath || `savedFolders/${data.folderKey}`;
+        database.ref(`users/${window.currentUser.uid}/${path}`).update({
             files: data.folderData.files
         }).then(() => {
             showNotification(`Deleted "${data.file.name}" from folder`);
@@ -7765,108 +7937,127 @@ function updateSavedCodesList() {
         list.innerHTML = '';
         let hasContent = false;
 
+        // Helper for recursive folder rendering
+        function renderFolderRecursive(container, key, folderData, firebasePath) {
+            // Create folder container
+            const folderContainer = document.createElement('div');
+            folderContainer.className = 'saved-folder-container';
+
+            // Header
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'tree-item file-item';
+            folderHeader.style.cssText = 'padding-left: 10px; cursor: pointer; display: flex; align-items: center; gap: 4px;';
+
+            const fileCount = (folderData.files ? folderData.files.length : 0);
+
+            folderHeader.innerHTML = `
+                <i class="fas fa-chevron-right folder-chevron" style="font-size: 10px; transition: transform 0.2s;"></i>
+                <i class="fas fa-folder folder-icon-main" style="color: #dcb67a; margin-right: 2px;"></i>
+                <span class="tree-item-name" style="flex: 1;">${folderData.name}</span>
+                <span style="font-size: 0.75em; color: var(--text-secondary); margin-right: 4px;">${fileCount}</span>
+                <button class="file-menu-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
+            `;
+
+            // Menu logic
+            const folderMenuBtn = folderHeader.querySelector('.file-menu-btn');
+            folderMenuBtn.onclick = (e) => {
+                e.stopPropagation();
+                showExplorerContextMenu(e, 'saved-folder', { key, folderData, firebasePath });
+            };
+
+            // Content list (hidden)
+            const contentList = document.createElement('div');
+            contentList.className = 'folder-files-list';
+            contentList.style.display = 'none';
+            contentList.style.paddingLeft = '15px';
+
+            // 1. Render Subfolders
+            if (folderData.subfolders) {
+                Object.entries(folderData.subfolders).forEach(([subKey, subData]) => {
+                    renderFolderRecursive(contentList, subKey, subData, `${firebasePath}/subfolders/${subKey}`);
+                });
+            }
+
+            // 2. Render Files
+            if (folderData.files && folderData.files.length > 0) {
+                folderData.files.forEach((file, fileIndex) => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'tree-item file-item';
+                    fileItem.style.cssText = 'padding-left: 10px; cursor: pointer; display: flex; align-items: center; gap: 6px;';
+
+                    // Get language
+                    let fileLanguage = file.language;
+                    if (!fileLanguage && file.name) {
+                        const ext = file.name.split('.').pop();
+                        fileLanguage = detectLanguageFromExtension(ext);
+                    }
+                    const iconData = getFileIconGlobal(fileLanguage);
+
+                    fileItem.innerHTML = `
+                        <span style="color: ${iconData.color}; font-weight: bold; font-size: 0.9em; min-width: 20px; text-align: center;">${iconData.text}</span>
+                        <span class="tree-item-name" style="flex: 1;">${file.name}</span>
+                        <button class="file-menu-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
+                    `;
+
+                    // Menu
+                    const fileMenuBtn = fileItem.querySelector('.file-menu-btn');
+                    fileMenuBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        showExplorerContextMenu(e, 'folder-file', {
+                            file,
+                            fileIndex,
+                            folderKey: key,
+                            folderData,
+                            firebasePath
+                        });
+                    };
+
+                    // Click to open
+                    fileItem.onclick = (e) => {
+                        e.stopPropagation();
+                        if (e.target.closest('.file-menu-btn')) return;
+                        openFolderFile({
+                            file,
+                            fileIndex,
+                            folderKey: key,
+                            folderData,
+                            firebasePath
+                        });
+                    };
+
+                    contentList.appendChild(fileItem);
+                });
+            }
+
+            // Toggle expansion
+            folderHeader.onclick = (e) => {
+                if (e.target.closest('.file-menu-btn')) return;
+
+                const isHidden = contentList.style.display === 'none';
+                contentList.style.display = isHidden ? 'block' : 'none';
+
+                // Update icon/chevron
+                const chevron = folderHeader.querySelector('.folder-chevron');
+                const folderIcon = folderHeader.querySelector('.folder-icon-main');
+                if (chevron) {
+                    chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+                }
+                if (folderIcon) {
+                    folderIcon.classList.toggle('fa-folder', !isHidden);
+                    folderIcon.classList.toggle('fa-folder-open', isHidden);
+                }
+            };
+
+            folderContainer.appendChild(folderHeader);
+            folderContainer.appendChild(contentList);
+            container.appendChild(folderContainer);
+        }
+
         // Add folders first
         if (foldersData && typeof foldersData === 'object' && Object.keys(foldersData).length > 0) {
             hasContent = true;
             Object.entries(foldersData).forEach(([key, folderData]) => {
-                // Create folder container
-                const folderContainer = document.createElement('div');
-                folderContainer.className = 'saved-folder-container';
-
-                // Create folder header
-                const folderHeader = document.createElement('div');
-                folderHeader.className = 'tree-item file-item';
-                folderHeader.style.cssText = 'padding-left: 10px; cursor: pointer; display: flex; align-items: center; gap: 4px;';
-
-                folderHeader.innerHTML = `
-                    <i class="fas fa-chevron-right folder-chevron" style="font-size: 10px; transition: transform 0.2s;"></i>
-                    <i class="fas fa-folder folder-icon-main" style="color: #dcb67a; margin-right: 2px;"></i>
-                    <span class="tree-item-name" style="flex: 1;">${folderData.name}</span>
-                    <span style="font-size: 0.75em; color: var(--text-secondary); margin-right: 4px;">${folderData.files ? folderData.files.length : 0}</span>
-                    <button class="file-menu-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
-                `;
-
-                // Handle folder menu button
-                const folderMenuBtn = folderHeader.querySelector('.file-menu-btn');
-                folderMenuBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    showExplorerContextMenu(e, 'saved-folder', { key, folderData });
-                };
-
-                // Create folder files list (hidden by default)
-                const filesList = document.createElement('div');
-                filesList.className = 'folder-files-list';
-                filesList.style.display = 'none';
-                filesList.style.paddingLeft = '15px';
-
-
-                // Add files to the list
-                if (folderData.files && folderData.files.length > 0) {
-                    // Add individual files
-
-                    folderData.files.forEach((file, fileIndex) => {
-                        const fileItem = document.createElement('div');
-                        fileItem.className = 'tree-item file-item';
-                        fileItem.style.cssText = 'padding-left: 10px; cursor: pointer; display: flex; align-items: center; gap: 6px;';
-
-                        // Get language from file property or detect from filename
-                        let fileLanguage = file.language;
-                        if (!fileLanguage && file.name) {
-                            const ext = file.name.split('.').pop();
-                            fileLanguage = detectLanguageFromExtension(ext);
-                        }
-                        const iconData = getFileIconGlobal(fileLanguage);
-
-                        fileItem.innerHTML = `
-                            <span style="color: ${iconData.color}; font-weight: bold; font-size: 0.9em; min-width: 20px; text-align: center;">${iconData.text}</span>
-                            <span class="tree-item-name" style="flex: 1;">${file.name}</span>
-                            <button class="file-menu-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
-                        `;
-
-                        // Handle file menu button
-                        const fileMenuBtn = fileItem.querySelector('.file-menu-btn');
-                        fileMenuBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            showExplorerContextMenu(e, 'folder-file', {
-                                file,
-                                fileIndex,
-                                folderKey: key,
-                                folderData
-                            });
-                        };
-
-                        fileItem.onclick = (e) => {
-                            e.stopPropagation();
-                            if (e.target.closest('.file-menu-btn')) return;
-                            openFolderFile({ file });
-                        };
-
-                        filesList.appendChild(fileItem);
-                    });
-                }
-
-                // Toggle folder expansion on click
-                folderHeader.onclick = (e) => {
-                    if (e.target.closest('.file-menu-btn')) return;
-
-                    const isHidden = filesList.style.display === 'none';
-                    filesList.style.display = isHidden ? 'block' : 'none';
-
-                    // Update chevron and folder icon
-                    const chevron = folderHeader.querySelector('.folder-chevron');
-                    const folderIcon = folderHeader.querySelector('.folder-icon-main');
-                    if (chevron) {
-                        chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
-                    }
-                    if (folderIcon) {
-                        folderIcon.classList.toggle('fa-folder', !isHidden);
-                        folderIcon.classList.toggle('fa-folder-open', isHidden);
-                    }
-                };
-
-                folderContainer.appendChild(folderHeader);
-                folderContainer.appendChild(filesList);
-                list.appendChild(folderContainer);
+                renderFolderRecursive(list, key, folderData, `savedFolders/${key}`);
             });
         }
 
@@ -7985,6 +8176,12 @@ function handleNewFile(mode) {
     // Remove dot for detection
     const language = detectLanguageFromExtension(extension.replace('.', ''));
 
+    // For cloud mode, open the Save to Cloud modal instead
+    if (mode === 'cloud') {
+        openSaveToCloudModal(cleanName, extension);
+        return;
+    }
+
     // Close modal
     const modal = document.getElementById('newFileModalRefinedV3');
     if (modal) modal.style.display = 'none';
@@ -8009,9 +8206,6 @@ function handleNewFile(mode) {
     if (mode === 'local') {
         saveFileLocally(fileName, defaultCode, language);
         showNotification(`File saved locally in Temp Files`);
-    } else if (mode === 'cloud') {
-        // For cloud, we initiate the saveCodeWithName logic
-        saveCodeWithName(fileName);
     }
 }
 
@@ -9066,3 +9260,653 @@ function highlightMatch(text, query, matchCase) {
     const regex = new RegExp(`(${escaped})`, matchCase ? 'g' : 'gi');
     return text.replace(regex, '<span style="background: var(--accent-color); color: white; padding: 0 2px; border-radius: 2px;">$1</span>');
 }
+
+// ==================== SAVE TO CLOUD MODAL FUNCTIONS (Windows Style) ====================
+
+// Cloud navigation state
+let cloudNavState = {
+    currentPath: [], // Array of {key, name, type, firebasePath} for breadcrumb
+    currentFolderKey: null, // Current folder key (null = root)
+    currentFirebasePath: null, // Full Firebase path to current folder (e.g., "savedFolders/abc" or "savedFolders/abc/subfolders/xyz")
+    allFolders: {}, // Cached folder data
+    allFiles: {} // Cached standalone files
+};
+
+// Handle "Save As" action from File menu
+function handleSaveAs() {
+    // Get current tab info
+    const activeTab = editorTabs[activeTabIndex];
+
+    if (!activeTab) {
+        // Just open modal empty if no tab (shouldn't happen usually)
+        openSaveToCloudModal();
+        return;
+    }
+
+    // Extract name and extension
+    let fileName = activeTab.name || 'Untitled';
+    let extension = '.js';
+
+    // Try to parse extension from name
+    const lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex > 0) {
+        const ext = fileName.substring(lastDotIndex);
+        if (ext.length <= 5) {
+            extension = ext;
+            fileName = fileName.substring(0, lastDotIndex);
+        }
+    }
+
+    // Check if parsing failed or no extension in name
+    if (extension === '.js' && activeTab.language) {
+        // We could look up correct extension here if really needed, 
+        // but .js default is usually fine as user can change it
+    }
+
+    // Check if file belongs to a folder context
+    const tabPath = activeTab.folderFirebasePath;
+    console.log('handleSaveAs debug (v2):', {
+        name: activeTab.name,
+        folderFirebasePath: tabPath,
+        currentSavedFolder: currentSavedFolder
+    });
+
+    if (tabPath && window.currentUser) {
+        // Check if it matches currentSavedFolder (common case optimization)
+        if (currentSavedFolder && (currentSavedFolder.firebasePath === tabPath)) {
+            openSaveToCloudModal(fileName, extension, {
+                key: currentSavedFolder.key, // Note: activeTab.folderFirebasePath usually points to the specific folder containing the file
+                name: currentSavedFolder.name,
+                firebasePath: tabPath,
+                fileIndex: activeTab.folderFileIndex
+            });
+            return;
+        }
+
+        // Otherwise fetch folder details to get name
+        database.ref(`users/${window.currentUser.uid}/${tabPath}`).once('value').then(snapshot => {
+            const folderData = snapshot.val();
+            if (folderData) {
+                openSaveToCloudModal(fileName, extension, {
+                    key: snapshot.key,
+                    name: folderData.name || 'Current Folder',
+                    firebasePath: tabPath,
+                    fileIndex: activeTab.folderFileIndex
+                });
+            } else {
+                // Fallback if folder not found
+                openSaveToCloudModal(fileName, extension);
+            }
+        }).catch(err => {
+            console.error("Error fetching folder context:", err);
+            openSaveToCloudModal(fileName, extension);
+        });
+        return;
+    }
+
+    openSaveToCloudModal(fileName, extension);
+}
+
+// Open the Save to Cloud modal
+function openSaveToCloudModal(fileName, extension, initialContext = null) {
+    if (!window.currentUser) {
+        showNotification('Please login first to save to cloud!');
+        return;
+    }
+
+    // Set file name and extension in modal
+    document.getElementById('cloudFileNameInput').value = fileName || '';
+    document.getElementById('cloudFileExtensionSelect').value = extension || '.js';
+
+    // Set navigation state
+    if (initialContext) {
+        cloudNavState.currentPath = [{
+            key: initialContext.key,
+            name: initialContext.name,
+            type: 'folder', // Assume folder for context
+            firebasePath: initialContext.firebasePath
+        }];
+        cloudNavState.currentFolderKey = initialContext.key;
+        cloudNavState.currentFirebasePath = initialContext.firebasePath;
+
+        // Store editing context to allow valid overwrites/renames
+        cloudNavState.sourceFileIndex = initialContext.fileIndex;
+        cloudNavState.sourceFirebasePath = initialContext.firebasePath;
+    } else {
+        // Reset navigation state
+        cloudNavState.currentPath = [];
+        cloudNavState.currentFolderKey = null;
+        cloudNavState.currentFirebasePath = null;
+        cloudNavState.sourceFileIndex = undefined;
+        cloudNavState.sourceFirebasePath = null;
+    }
+
+    // Show modal
+    document.getElementById('saveToCloudModal').style.display = 'block';
+
+    // Load content
+    loadCloudBrowserContent();
+
+    // Focus file name input
+    setTimeout(() => {
+        document.getElementById('cloudFileNameInput').focus();
+    }, 100);
+}
+
+// Close the Save to Cloud modal
+function closeSaveToCloudModal() {
+    document.getElementById('saveToCloudModal').style.display = 'none';
+    hideCloudNewFolderDialog();
+}
+
+// Load cloud browser content based on current path
+function loadCloudBrowserContent() {
+    const browser = document.getElementById('cloudFileBrowser');
+    browser.innerHTML = `
+        <div style="text-align: center; padding: 60px 20px; color: #808080;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 28px; margin-bottom: 12px; display: block;"></i>
+            <span style="font-size: 13px;">Loading...</span>
+        </div>
+    `;
+
+    // Update breadcrumb
+    updateCloudBreadcrumb();
+
+    // Update back button state
+    const backBtn = document.getElementById('cloudNavBack');
+    if (backBtn) {
+        backBtn.disabled = cloudNavState.currentPath.length === 0;
+        backBtn.style.opacity = cloudNavState.currentPath.length === 0 ? '0.5' : '1';
+    }
+
+    if (cloudNavState.currentFolderKey === null) {
+        // Load root: show all folders and standalone files
+        loadCloudRootContent();
+    } else {
+        // Load folder contents (subfolders + files)
+        loadCloudFolderContent(cloudNavState.currentFolderKey);
+    }
+}
+
+// Load root content (folders + standalone files)
+function loadCloudRootContent() {
+    const browser = document.getElementById('cloudFileBrowser');
+
+    Promise.all([
+        database.ref(`users/${window.currentUser.uid}/savedFolders`).once('value'),
+        database.ref(`users/${window.currentUser.uid}/savedCodes`).once('value')
+    ]).then(([foldersSnap, filesSnap]) => {
+        const folders = foldersSnap.val() || {};
+        const files = filesSnap.val() || {};
+
+        cloudNavState.allFolders = folders;
+        cloudNavState.allFiles = files;
+
+        browser.innerHTML = '';
+
+        const hasContent = Object.keys(folders).length > 0 || Object.keys(files).length > 0;
+
+        if (!hasContent) {
+            browser.innerHTML = `
+                <div class="cloud-empty">
+                    <i class="fas fa-cloud"></i>
+                    <p style="font-size: 14px; margin-bottom: 8px;">Your cloud is empty</p>
+                    <p style="font-size: 12px;">Create a new folder or save directly here</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Sort folders by timestamp
+        const folderArray = Object.entries(folders)
+            .map(([key, data]) => ({ key, ...data, type: 'folder' }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        // Sort files by timestamp  
+        const fileArray = Object.entries(files)
+            .map(([key, data]) => ({ key, ...data, type: 'file' }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        // Render folders first
+        folderArray.forEach(folder => {
+            browser.appendChild(createCloudItem(folder, 'folder'));
+        });
+
+        // Render standalone files
+        fileArray.forEach(file => {
+            browser.appendChild(createCloudItem(file, 'file'));
+        });
+
+    }).catch(error => {
+        browser.innerHTML = `
+            <div class="cloud-empty">
+                <i class="fas fa-exclamation-triangle" style="color: #f44336;"></i>
+                <p>Error loading content</p>
+                <p style="font-size: 11px;">${error.message}</p>
+            </div>
+        `;
+    });
+}
+
+// Load folder contents (subfolders from folder.subfolders + files from folder.files)
+function loadCloudFolderContent(folderKey) {
+    const browser = document.getElementById('cloudFileBrowser');
+
+    // Use the full Firebase path for nested folders
+    const firebasePath = cloudNavState.currentFirebasePath || `savedFolders/${folderKey}`;
+
+    database.ref(`users/${window.currentUser.uid}/${firebasePath}`).once('value', (snapshot) => {
+        const folder = snapshot.val();
+
+        if (!folder) {
+            browser.innerHTML = '<div class="cloud-empty"><p>Folder not found</p></div>';
+            return;
+        }
+
+        browser.innerHTML = '';
+
+        const subfolders = folder.subfolders || {};
+        const files = folder.files || [];
+
+        const hasContent = Object.keys(subfolders).length > 0 || files.length > 0;
+
+        if (!hasContent) {
+            browser.innerHTML = `
+                <div class="cloud-empty">
+                    <i class="fas fa-folder-open"></i>
+                    <p style="font-size: 14px;">This folder is empty</p>
+                    <p style="font-size: 12px;">Create a subfolder or save a file here</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Render subfolders
+        Object.entries(subfolders).forEach(([key, subfolder]) => {
+            browser.appendChild(createCloudItem({
+                key,
+                name: subfolder.name,
+                type: 'subfolder',
+                parentKey: folderKey
+            }, 'folder'));
+        });
+
+        // Render files in this folder
+        files.forEach((file, index) => {
+            browser.appendChild(createCloudItem({
+                ...file,
+                index,
+                folderKey,
+                type: 'folderFile'
+            }, 'file'));
+        });
+
+    }).catch(error => {
+        browser.innerHTML = `
+            <div class="cloud-empty">
+                <i class="fas fa-exclamation-triangle" style="color: #f44336;"></i>
+                <p>Error: ${error.message}</p>
+            </div>
+        `;
+    });
+}
+
+// Create a cloud item element (folder or file)
+function createCloudItem(item, iconType) {
+    const div = document.createElement('div');
+    div.className = 'cloud-item';
+    div.dataset.key = item.key;
+    div.dataset.type = item.type;
+
+    const iconClass = iconType === 'folder' ? 'fa-folder folder' : 'fa-file-code file';
+    const meta = iconType === 'folder'
+        ? (item.files ? `${item.files.length} files` : '')
+        : (item.language || '');
+
+    div.innerHTML = `
+        <i class="fas ${iconClass} cloud-item-icon ${iconType}"></i>
+        <span class="cloud-item-name">${item.name}</span>
+        <span class="cloud-item-meta">${meta}</span>
+    `;
+
+    // Double-click to enter folder
+    if (iconType === 'folder') {
+        div.addEventListener('dblclick', () => {
+            navigateIntoFolder(item);
+        });
+    }
+
+    // Single click to select
+    div.addEventListener('click', () => {
+        document.querySelectorAll('.cloud-item').forEach(el => el.classList.remove('selected'));
+        div.classList.add('selected');
+    });
+
+    return div;
+}
+
+// Navigate into a folder
+function navigateIntoFolder(folder) {
+    if (folder.type === 'folder') {
+        // Top-level folder - Firebase path is savedFolders/{key}
+        const firebasePath = `savedFolders/${folder.key}`;
+        cloudNavState.currentPath.push({
+            key: folder.key,
+            name: folder.name,
+            type: 'folder',
+            firebasePath: firebasePath
+        });
+        cloudNavState.currentFolderKey = folder.key;
+        cloudNavState.currentFirebasePath = firebasePath;
+    } else if (folder.type === 'subfolder') {
+        // Subfolder - Firebase path extends from parent: parentPath/subfolders/{key}
+        const parentPath = cloudNavState.currentFirebasePath;
+        const firebasePath = `${parentPath}/subfolders/${folder.key}`;
+        cloudNavState.currentPath.push({
+            key: folder.key,
+            name: folder.name,
+            type: 'subfolder',
+            firebasePath: firebasePath
+        });
+        cloudNavState.currentFolderKey = folder.key;
+        cloudNavState.currentFirebasePath = firebasePath;
+    }
+
+    loadCloudBrowserContent();
+}
+
+// Navigate back
+function navigateCloudBack() {
+    if (cloudNavState.currentPath.length > 0) {
+        cloudNavState.currentPath.pop();
+        if (cloudNavState.currentPath.length === 0) {
+            cloudNavState.currentFolderKey = null;
+            cloudNavState.currentFirebasePath = null;
+        } else {
+            const lastItem = cloudNavState.currentPath[cloudNavState.currentPath.length - 1];
+            cloudNavState.currentFolderKey = lastItem.key;
+            cloudNavState.currentFirebasePath = lastItem.firebasePath;
+        }
+        loadCloudBrowserContent();
+    }
+}
+
+// Navigate to root
+function navigateToCloudRoot() {
+    cloudNavState.currentPath = [];
+    cloudNavState.currentFolderKey = null;
+    cloudNavState.currentFirebasePath = null;
+    loadCloudBrowserContent();
+}
+
+// Update breadcrumb display
+function updateCloudBreadcrumb() {
+    const breadcrumb = document.getElementById('cloudBreadcrumb');
+    if (!breadcrumb) return;
+
+    let html = `<span class="cloud-breadcrumb-item" onclick="navigateToCloudRoot()">
+        <i class="fas fa-cloud" style="margin-right: 6px;"></i>My Cloud
+    </span>`;
+
+    cloudNavState.currentPath.forEach((item, index) => {
+        html += `<span class="cloud-breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>`;
+        html += `<span class="cloud-breadcrumb-item" onclick="navigateToBreadcrumb(${index})">${item.name}</span>`;
+    });
+
+    breadcrumb.innerHTML = html;
+}
+
+// Navigate to specific breadcrumb position
+function navigateToBreadcrumb(index) {
+    cloudNavState.currentPath = cloudNavState.currentPath.slice(0, index + 1);
+    if (cloudNavState.currentPath.length > 0) {
+        const lastItem = cloudNavState.currentPath[cloudNavState.currentPath.length - 1];
+        cloudNavState.currentFolderKey = lastItem.key;
+        cloudNavState.currentFirebasePath = lastItem.firebasePath;
+    } else {
+        cloudNavState.currentFolderKey = null;
+        cloudNavState.currentFirebasePath = null;
+    }
+    loadCloudBrowserContent();
+}
+
+// Show new folder dialog
+function showCloudNewFolderDialog() {
+    document.getElementById('cloudNewFolderRow').style.display = 'block';
+    document.getElementById('cloudNewFolderName').value = '';
+    document.getElementById('cloudNewFolderName').focus();
+}
+
+// Hide new folder dialog
+function hideCloudNewFolderDialog() {
+    document.getElementById('cloudNewFolderRow').style.display = 'none';
+}
+
+// Create new folder in current location
+function createCloudFolder() {
+    const folderName = document.getElementById('cloudNewFolderName').value.trim();
+
+    if (!folderName) {
+        showNotification('Please enter a folder name!');
+        return;
+    }
+
+    if (!window.currentUser) {
+        showNotification('Please login first!');
+        return;
+    }
+
+    if (cloudNavState.currentFolderKey === null) {
+        // Create top-level folder
+        const folderData = {
+            name: folderName,
+            files: [],
+            subfolders: {},
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            lastModified: new Date().toISOString()
+        };
+
+        database.ref(`users/${window.currentUser.uid}/savedFolders`).push(folderData).then(() => {
+            hideCloudNewFolderDialog();
+            showNotification(`Created folder "${folderName}"`);
+            loadCloudBrowserContent();
+        }).catch(error => {
+            showNotification('Error creating folder: ' + error.message);
+        });
+    } else {
+        // Create subfolder inside current folder using the Firebase path
+        const subfolderData = {
+            name: folderName,
+            files: [],
+            subfolders: {},
+            timestamp: Date.now()
+        };
+
+        const parentPath = cloudNavState.currentFirebasePath;
+        const subfolderRef = database.ref(`users/${window.currentUser.uid}/${parentPath}/subfolders`).push();
+        subfolderRef.set(subfolderData).then(() => {
+            hideCloudNewFolderDialog();
+            showNotification(`Created subfolder "${folderName}"`);
+            loadCloudBrowserContent();
+        }).catch(error => {
+            showNotification('Error creating subfolder: ' + error.message);
+        });
+    }
+}
+
+// Save file to current cloud location
+function saveToCurrentCloudLocation() {
+    const fileName = document.getElementById('cloudFileNameInput').value.trim();
+    const extension = document.getElementById('cloudFileExtensionSelect').value;
+
+    if (!fileName) {
+        showNotification('Please enter a file name!');
+        return;
+    }
+
+    if (!window.currentUser) {
+        showNotification('Please login first!');
+        return;
+    }
+
+    const content = editor ? editor.getValue() : '';
+    const language = getLanguageFromExtension(extension);
+    const fullFileName = fileName + extension;
+
+    if (cloudNavState.currentFolderKey === null) {
+        // Save as standalone file at root
+        const codeData = {
+            name: fullFileName,
+            content: content,
+            language: language,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            lastModified: new Date().toISOString()
+        };
+
+        const codeRef = database.ref(`users/${window.currentUser.uid}/savedCodes`).push();
+        codeRef.set(codeData).then(() => {
+            completeSave(fullFileName, language, null, codeRef.key);
+        }).catch(error => {
+            showNotification('Error saving file: ' + error.message);
+        });
+    } else {
+        // Save file inside current folder using Firebase path
+        const firebasePath = cloudNavState.currentFirebasePath;
+
+        database.ref(`users/${window.currentUser.uid}/${firebasePath}`).once('value', (snapshot) => {
+            const folder = snapshot.val();
+            if (!folder) {
+                showNotification('Folder not found!');
+                return;
+            }
+
+            const files = folder.files || [];
+            let newFileIndex = -1;
+
+            // Check if we are updating active source file (Rename/Update)
+            if (cloudNavState.sourceFileIndex !== undefined &&
+                cloudNavState.sourceFileIndex !== null &&
+                cloudNavState.sourceFirebasePath === firebasePath) {
+                // If the file exists at this index, target it
+                if (files[cloudNavState.sourceFileIndex]) {
+                    newFileIndex = cloudNavState.sourceFileIndex;
+                }
+            }
+
+            // If not targeting source, check for name overwrite
+            if (newFileIndex === -1) {
+                const existingIndex = files.findIndex(f => f.name === fullFileName);
+                if (existingIndex >= 0) {
+                    newFileIndex = existingIndex;
+                }
+            }
+
+            // Check for name collision (if renaming to an existing name)
+            if (newFileIndex >= 0) {
+                const collisionIndex = files.findIndex((f, idx) => f.name === fullFileName && idx !== newFileIndex);
+                if (collisionIndex >= 0) {
+                    showNotification('File name already exists in this folder!');
+                    return;
+                }
+
+                // Update existing file
+                files[newFileIndex] = {
+                    name: fullFileName,
+                    content: content,
+                    language: language
+                };
+            } else {
+                // Create new file
+                files.push({
+                    name: fullFileName,
+                    content: content,
+                    language: language
+                });
+                newFileIndex = files.length - 1;
+            }
+
+            database.ref(`users/${window.currentUser.uid}/${firebasePath}`).update({
+                files: files,
+                lastModified: new Date().toISOString()
+            }).then(() => {
+                // Get folder name from current path
+                const folderName = cloudNavState.currentPath.length > 0
+                    ? cloudNavState.currentPath[cloudNavState.currentPath.length - 1].name
+                    : 'folder';
+
+                completeSave(fullFileName, language, {
+                    key: cloudNavState.currentFolderKey,
+                    name: folderName,
+                    fileIndex: newFileIndex,
+                    firebasePath: firebasePath
+                }, null);
+            }).catch(error => {
+                showNotification('Error saving file: ' + error.message);
+            });
+        });
+    }
+}
+
+// Complete save operation
+function completeSave(fullFileName, language, folderInfo, standaloneKey) {
+    // Close modals
+    closeSaveToCloudModal();
+    const newFileModal = document.getElementById('newFileModalRefinedV3');
+    if (newFileModal) newFileModal.style.display = 'none';
+
+    // Update current tab
+    if (editorTabs[activeTabIndex]) {
+        editorTabs[activeTabIndex].name = fullFileName;
+        editorTabs[activeTabIndex].language = language;
+        editorTabs[activeTabIndex].hasChanges = false;
+
+        if (folderInfo) {
+            editorTabs[activeTabIndex].folderFileIndex = folderInfo.fileIndex;
+            editorTabs[activeTabIndex].folderFirebasePath = folderInfo.firebasePath; // Store path for Ctrl+S
+            editorTabs[activeTabIndex].standaloneKey = null;
+            currentSavedFolder = {
+                key: folderInfo.key,
+                name: folderInfo.name,
+                startIndex: activeTabIndex - folderInfo.fileIndex,
+                firebasePath: folderInfo.firebasePath
+            };
+        } else if (standaloneKey) {
+            editorTabs[activeTabIndex].standaloneKey = standaloneKey;
+            editorTabs[activeTabIndex].folderFileIndex = null;
+            editorTabs[activeTabIndex].folderFirebasePath = null;
+            currentSavedFolder = null;
+        }
+    }
+
+    renderTabs();
+
+    const location = folderInfo ? `"${folderInfo.name}"` : 'cloud';
+    showNotification(`Saved "${fullFileName}" to ${location}!`);
+}
+
+// Helper function to get language from extension
+function getLanguageFromExtension(extension) {
+    const extensionMap = {
+        '.js': 'javascript',
+        '.py': 'python',
+        '.html': 'html',
+        '.css': 'css',
+        '.java': 'java',
+        '.c': 'c',
+        '.cpp': 'cpp',
+        '.json': 'json',
+        '.md': 'markdown'
+    };
+    return extensionMap[extension] || 'javascript';
+}
+
+// Make functions globally accessible
+window.openSaveToCloudModal = openSaveToCloudModal;
+window.closeSaveToCloudModal = closeSaveToCloudModal;
+window.navigateCloudBack = navigateCloudBack;
+window.navigateToCloudRoot = navigateToCloudRoot;
+window.navigateToBreadcrumb = navigateToBreadcrumb;
+window.showCloudNewFolderDialog = showCloudNewFolderDialog;
+window.hideCloudNewFolderDialog = hideCloudNewFolderDialog;
+window.createCloudFolder = createCloudFolder;
+window.saveToCurrentCloudLocation = saveToCurrentCloudLocation;

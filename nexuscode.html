@@ -64,7 +64,7 @@
                             <div class="menu-separator"></div>
                             <div class="menu-option" onclick="saveCode()">Save <span class="shortcut">Ctrl+S</span>
                             </div>
-                            <div class="menu-option">Save As...</div>
+                            <div class="menu-option" onclick="handleSaveAs()">Save As...</div>
                             <div class="menu-separator"></div>
                             <div class="menu-option" onclick="closeTab(activeTabIndex)">Close Editor <span
                                     class="shortcut">Ctrl+W</span></div>
@@ -1170,7 +1170,7 @@
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 
     <!-- App Scripts -->
-    <script src="nexuscode.js?v=20260107"></script>
+    <script src="nexuscode.js?v=20260118"></script>
     <script src="nexus-collaboration.js"></script>
     <script src="shared_functions.js"></script>
     <script src="nexus-profile.js?v=20241226"></script>
@@ -2270,6 +2270,205 @@
     <div id="explorerContextMenu" class="explorer-context-menu" style="display: none;">
         <!-- Menu items will be dynamically added -->
     </div>
+
+    <!-- Save to Cloud Modal (Windows Save As Style) -->
+    <div id="saveToCloudModal" class="modal"
+        style="display: none; position: fixed; z-index: 20001; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6);">
+        <div class="save-as-dialog"
+            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: #1e1e1e; border: 1px solid #454545; width: 600px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,0.8); border-radius: 8px; display: flex; flex-direction: column; max-height: 80vh;">
+
+            <!-- Title Bar -->
+            <div
+                style="background: linear-gradient(180deg, #2d2d2d 0%, #252526 100%); padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #3c3c3c; border-radius: 8px 8px 0 0;">
+                <span
+                    style="font-size: 13px; font-weight: 500; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;">Save
+                    to Cloud</span>
+                <div onclick="closeSaveToCloudModal()"
+                    style="color: #808080; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.15s;"
+                    onmouseover="this.style.background='#c42b1c'; this.style.color='white'"
+                    onmouseout="this.style.background='transparent'; this.style.color='#808080'">
+                    <i class="fas fa-times" style="font-size: 12px;"></i>
+                </div>
+            </div>
+
+            <!-- Toolbar - Navigation & Actions -->
+            <div
+                style="padding: 8px 12px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; gap: 8px;">
+                <!-- Back Button -->
+                <button id="cloudNavBack" onclick="navigateCloudBack()"
+                    style="width: 28px; height: 28px; background: #3c3c3c; border: 1px solid #4a4a4a; border-radius: 4px; color: #808080; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                    onmouseover="this.style.background='#4a4a4a'" onmouseout="this.style.background='#3c3c3c'" disabled>
+                    <i class="fas fa-arrow-left" style="font-size: 11px;"></i>
+                </button>
+
+                <!-- Breadcrumb Path -->
+                <div id="cloudBreadcrumb"
+                    style="flex: 1; display: flex; align-items: center; background: #3c3c3c; border: 1px solid #4a4a4a; border-radius: 4px; padding: 4px 10px; min-height: 26px; overflow-x: auto;">
+                    <span style="color: #0e9ed8; cursor: pointer; font-size: 12px;" onclick="navigateToCloudRoot()">
+                        <i class="fas fa-cloud" style="margin-right: 6px;"></i>My Cloud
+                    </span>
+                </div>
+
+                <!-- New Folder Button -->
+                <button onclick="showCloudNewFolderDialog()"
+                    style="height: 28px; padding: 0 12px; background: #0e639c; border: none; border-radius: 4px; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: 'Segoe UI', sans-serif;"
+                    onmouseover="this.style.background='#1177bb'" onmouseout="this.style.background='#0e639c'">
+                    <i class="fas fa-folder-plus" style="font-size: 11px;"></i>
+                    New Folder
+                </button>
+            </div>
+
+            <!-- New Folder Input (Inline) -->
+            <div id="cloudNewFolderRow"
+                style="display: none; padding: 8px 12px; background: #2d2d2d; border-bottom: 1px solid #3c3c3c;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-folder" style="color: #dcb67a; font-size: 16px;"></i>
+                    <input type="text" id="cloudNewFolderName" placeholder="New folder name..."
+                        style="flex: 1; height: 28px; background: #3c3c3c; border: 1px solid #0e639c; border-radius: 4px; color: #e0e0e0; padding: 0 10px; font-size: 13px; outline: none;">
+                    <button onclick="createCloudFolder()"
+                        style="height: 28px; padding: 0 12px; background: #0e639c; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">Create</button>
+                    <button onclick="hideCloudNewFolderDialog()"
+                        style="height: 28px; padding: 0 10px; background: #3c3c3c; border: none; border-radius: 4px; color: #ccc; cursor: pointer; font-size: 12px;">Cancel</button>
+                </div>
+            </div>
+
+            <!-- File Browser Area -->
+            <div style="flex: 1; overflow-y: auto; min-height: 250px; max-height: 350px; background: #1e1e1e;">
+                <div id="cloudFileBrowser" style="padding: 8px;">
+                    <!-- Loading state -->
+                    <div style="text-align: center; padding: 60px 20px; color: #808080;">
+                        <i class="fas fa-spinner fa-spin"
+                            style="font-size: 28px; margin-bottom: 12px; display: block;"></i>
+                        <span style="font-size: 13px;">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer - File Name & Save -->
+            <div
+                style="padding: 12px 16px; background: #252526; border-top: 1px solid #3c3c3c; border-radius: 0 0 8px 8px;">
+                <!-- File Name Row -->
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: #9d9d9d; min-width: 70px;">File name:</label>
+                    <input type="text" id="cloudFileNameInput" placeholder="Enter file name"
+                        style="flex: 1; height: 28px; background: #3c3c3c; border: 1px solid #4a4a4a; border-radius: 4px; color: #e0e0e0; padding: 0 10px; font-size: 13px; outline: none; font-family: 'Consolas', monospace;">
+                    <select id="cloudFileExtensionSelect"
+                        style="height: 28px; background: #3c3c3c; border: 1px solid #4a4a4a; border-radius: 4px; color: #e0e0e0; padding: 0 8px; font-size: 13px; cursor: pointer;">
+                        <option value=".js">.js</option>
+                        <option value=".py">.py</option>
+                        <option value=".html">.html</option>
+                        <option value=".css">.css</option>
+                        <option value=".java">.java</option>
+                        <option value=".c">.c</option>
+                        <option value=".cpp">.cpp</option>
+                        <option value=".json">.json</option>
+                        <option value=".md">.md</option>
+                    </select>
+                </div>
+
+                <!-- Buttons Row -->
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button onclick="saveToCurrentCloudLocation()"
+                        style="height: 32px; padding: 0 24px; background: #0e639c; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px; font-family: 'Segoe UI', sans-serif;"
+                        onmouseover="this.style.background='#1177bb'" onmouseout="this.style.background='#0e639c'">
+                        Save
+                    </button>
+                    <button onclick="closeSaveToCloudModal()"
+                        style="height: 32px; padding: 0 20px; background: #3c3c3c; border: 1px solid #4a4a4a; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 13px; font-family: 'Segoe UI', sans-serif;"
+                        onmouseover="this.style.background='#4a4a4a'" onmouseout="this.style.background='#3c3c3c'">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Save As Dialog Styles */
+        .cloud-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.1s;
+            border: 1px solid transparent;
+        }
+
+        .cloud-item:hover {
+            background: #2a2d2e;
+        }
+
+        .cloud-item.selected {
+            background: #094771;
+            border-color: #0e639c;
+        }
+
+        .cloud-item-icon {
+            font-size: 20px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .cloud-item-icon.folder {
+            color: #dcb67a;
+        }
+
+        .cloud-item-icon.file {
+            color: #6997d5;
+        }
+
+        .cloud-item-name {
+            flex: 1;
+            font-size: 13px;
+            color: #e0e0e0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cloud-item-meta {
+            font-size: 11px;
+            color: #808080;
+        }
+
+        .cloud-breadcrumb-item {
+            color: #0e9ed8;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .cloud-breadcrumb-item:hover {
+            text-decoration: underline;
+        }
+
+        .cloud-breadcrumb-sep {
+            color: #808080;
+            margin: 0 6px;
+            font-size: 10px;
+        }
+
+        .cloud-empty {
+            text-align: center;
+            padding: 50px 20px;
+            color: #6d6d6d;
+        }
+
+        .cloud-empty i {
+            font-size: 40px;
+            margin-bottom: 16px;
+            display: block;
+            color: #4a4a4a;
+        }
+
+        #cloudFileNameInput:focus,
+        #cloudNewFolderName:focus {
+            border-color: #0e639c;
+        }
+    </style>
+
 
     <style>
         .icon-btn-small {
