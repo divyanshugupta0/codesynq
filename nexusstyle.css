@@ -5563,3 +5563,559 @@ input[type=range]:focus {
     opacity: 1 !important;
     visibility: visible !important;
 }
+
+/* ========================================
+   CHAT MESSAGE DROPDOWN MENU
+======================================== */
+
+/* Message wrapper for content and dropdown */
+.message-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    position: relative;
+}
+
+.message-text {
+    flex: 1;
+    word-wrap: break-word;
+}
+
+/* Dropdown arrow button - shows on hover */
+.message-dropdown-btn {
+    background: rgba(0, 0, 0, 0.35);
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    flex-shrink: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.chat-message:hover .message-dropdown-btn {
+    opacity: 1;
+}
+
+.message-dropdown-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+}
+
+.chat-message.sent .message-dropdown-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+}
+
+/* Dropdown menu that appears when clicking the arrow */
+.message-dropdown-menu {
+    position: fixed;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    z-index: 10001;
+    min-width: 130px;
+    padding: 6px 0;
+    animation: dropdownSlide 0.15s ease-out;
+}
+
+@keyframes dropdownSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+
+.dropdown-menu-item i {
+    width: 14px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.dropdown-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.dropdown-menu-item:hover i {
+    color: var(--primary-color);
+}
+
+.dropdown-menu-item.delete {
+    color: #f44336;
+}
+
+.dropdown-menu-item.delete i {
+    color: #f44336;
+}
+
+.dropdown-menu-item.delete:hover {
+    background: rgba(244, 67, 54, 0.15);
+}
+
+/* ========================================
+   ENHANCED FRIEND PROFILE MODAL
+======================================== */
+
+.friend-profile-content {
+    max-width: 380px;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.friend-profile-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 20px;
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    position: relative;
+}
+
+.friend-profile-avatar-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.friend-profile-avatar-initials {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 28px;
+    font-weight: bold;
+    border: 3px solid var(--bg-secondary);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.friend-profile-status {
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-secondary);
+}
+
+.friend-profile-status.online {
+    background: #4CAF50;
+    box-shadow: 0 0 6px #4CAF50;
+}
+
+.friend-profile-status.offline {
+    background: #9e9e9e;
+}
+
+.friend-profile-name-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.friend-profile-name {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.friend-profile-username {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.friend-profile-status-text {
+    font-size: 0.8rem;
+    margin-top: 2px;
+}
+
+.friend-profile-status-text.online {
+    color: #4CAF50;
+}
+
+.friend-profile-status-text.offline {
+    color: var(--text-secondary);
+}
+
+/* Friend Info Grid */
+.friend-profile-info-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 20px;
+}
+
+.friend-info-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.friend-info-row i {
+    color: var(--primary-color);
+    font-size: 13px;
+    width: 18px;
+    text-align: center;
+}
+
+.friend-info-row .info-label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    min-width: 90px;
+}
+
+.friend-info-row .info-value {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    flex: 1;
+    text-align: right;
+}
+
+/* Friend Profile Actions */
+.friend-profile-actions {
+    display: flex;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+
+.friend-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.friend-action-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(99, 102, 241, 0.3);
+}
+
+.friend-action-btn.danger:hover {
+    background: #f44336;
+    border-color: #f44336;
+    box-shadow: 0 3px 10px rgba(244, 67, 54, 0.3);
+}
+
+.friend-action-btn i {
+    font-size: 13px;
+}
+
+/* ========================================
+   WHATSAPP-STYLE PROFILE PANEL
+======================================== */
+
+.friend-profile-panel {
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg-secondary);
+    display: none;
+}
+
+.profile-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+.profile-panel-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px 24px;
+    background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.profile-panel-avatar-container {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.profile-panel-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 40px;
+    font-weight: bold;
+    border: 3px solid var(--bg-secondary);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.profile-panel-status-dot {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 3px solid var(--bg-secondary);
+}
+
+.profile-panel-status-dot.online {
+    background: #4CAF50;
+    box-shadow: 0 0 8px #4CAF50;
+}
+
+.profile-panel-status-dot.offline {
+    background: #9e9e9e;
+}
+
+.profile-panel-name {
+    margin: 0 0 4px;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.profile-panel-username {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.profile-panel-status-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.profile-panel-status-text.online {
+    color: #4CAF50;
+}
+
+/* Profile Panel Sections */
+.profile-panel-section {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.profile-panel-section-title {
+    padding: 0 20px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--primary-color);
+    letter-spacing: 0.5px;
+}
+
+.profile-panel-info-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 20px;
+    cursor: default;
+}
+
+.profile-panel-info-item i {
+    color: var(--text-secondary);
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+}
+
+.profile-panel-info-item .info-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.profile-panel-info-item .info-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.profile-panel-info-item .info-value {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+/* Profile Panel Actions */
+.profile-panel-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.profile-panel-action:hover {
+    background: var(--bg-tertiary);
+}
+
+.profile-panel-action i {
+    color: var(--text-secondary);
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+}
+
+.profile-panel-action span {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.profile-panel-action.danger i,
+.profile-panel-action.danger span {
+    color: #f44336;
+}
+
+.profile-panel-action.danger:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+/* ========================================
+   PROFILE PICTURE MODAL
+======================================== */
+
+.profile-picture-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20000;
+    justify-content: center;
+    align-items: center;
+}
+
+.profile-picture-modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.profile-picture-modal-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 500px;
+    padding: 20px;
+    animation: zoomIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.profile-picture-modal-image {
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.profile-picture-modal-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-picture-modal-image.initials {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+    color: white;
+    font-size: 120px;
+    font-weight: bold;
+}
+
+.profile-picture-modal-name {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.profile-picture-close-btn {
+    position: absolute;
+    top: -40px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-picture-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes zoomIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

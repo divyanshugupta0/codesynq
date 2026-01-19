@@ -36,6 +36,39 @@ function saveEditorState() {
     state.activeTabIndex = activeTabIndex;
 
     localStorage.setItem('codesynq_editor_state', JSON.stringify(state));
+
+    // Sync to temp_files for sidebar (Persistent Mode)
+    // We update existing files or add new ones, but DO NOT remove files just because the tab is closed
+    let storedFiles = [];
+    try {
+        storedFiles = JSON.parse(localStorage.getItem('temp_files') || '[]');
+    } catch (e) {
+        console.error('Error parsing temp_files', e);
+        storedFiles = [];
+    }
+
+    // Create a map of existing files by name for quick update
+    const fileMap = new Map(storedFiles.map(f => [f.name, f]));
+
+    // Update with content from currently open unsaved tabs
+    const tempTabs = editorTabs.filter(t => !t.standaloneKey && !t.folderFirebasePath);
+    tempTabs.forEach(tab => {
+        // Update existing or add new
+        fileMap.set(tab.name, {
+            name: tab.name,
+            content: tab.content || '',
+            language: tab.language
+        });
+    });
+
+    // Save back to storage
+    const updatedFiles = Array.from(fileMap.values());
+    localStorage.setItem('temp_files', JSON.stringify(updatedFiles));
+
+    // Update sidebar if function exists
+    if (typeof updateTempFilesList === 'function') {
+        updateTempFilesList();
+    }
 }
 
 function loadEditorState() {
@@ -1143,6 +1176,7 @@ function setupUI() {
 
     // Setup resizer
     setupResizer();
+    setupSidebarResizer();
 
     // Setup split resizer for preview pane
     setupSplitResizer();
@@ -2867,13 +2901,70 @@ function setupResizer() {
 
             resizer.classList.remove('active');
 
-            // Final resize of xterm terminal after resize completes
             if (window.fitTerminal) {
                 setTimeout(() => window.fitTerminal(), 50);
             }
         }
     });
 }
+
+function setupSidebarResizer() {
+    const resizer = document.getElementById('sidebarResizer');
+    const sidebar = document.querySelector('.sidebar');
+
+    if (!resizer || !sidebar) return;
+
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        resizer.classList.add('active');
+
+        // Add overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'resizeOverlay';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; cursor: col-resize;';
+        document.body.appendChild(overlay);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const sidebarRect = sidebar.getBoundingClientRect();
+        // Calculate width: mouse position - sidebar left position
+        const newWidth = e.clientX - sidebarRect.left;
+
+        // Constraints
+        const minWidth = 180;
+        const maxWidth = 500;
+
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            sidebar.style.width = `${newWidth}px`;
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            resizer.classList.remove('active');
+
+            const overlay = document.getElementById('resizeOverlay');
+            if (overlay) overlay.remove();
+
+            // Resize editor layout
+            if (window.editor) {
+                window.editor.layout();
+            }
+        }
+    });
+}
+
+// Alias for backward compatibility / fixing errors
+window.showMessageContextMenu = window.showMessageDropdownMenu;
 
 // Setup split resizer for preview pane
 function setupSplitResizer() {
@@ -5706,11 +5797,15 @@ function setupFriendSystem() {
     loadFriendRequests();
 
     // Friend Info Modal
-    document.getElementById('closeFriendInfo').addEventListener('click', () => {
+    document.getElementById('closeFriendInfo')?.addEventListener('click', () => {
         document.getElementById('friendInfoModal').style.display = 'none';
     });
 
-    document.getElementById('removeFriend').addEventListener('click', removeFriendFromChat);
+    document.getElementById('removeFriend')?.addEventListener('click', removeFriendFromChat);
+
+    // Chat info button and header profile click - opens profile panel
+    document.getElementById('chatInfoBtn')?.addEventListener('click', showFriendInfoPanel);
+    document.getElementById('chatHeaderProfile')?.addEventListener('click', showFriendInfoPanel);
 }
 
 function sendFriendRequest() {
@@ -5853,6 +5948,7 @@ function loadFriendChatMessages(friendUid) {
     chatMessages.innerHTML = '';
 
     const chatId = [window.currentUser.uid, friendUid].sort().join('_');
+    window.currentChatId = chatId; // Store for delete operations
 
     database.ref(`chats/${chatId}`).orderByChild('timestamp').on('value', (snapshot) => {
         const messages = snapshot.val();
@@ -5863,25 +5959,392 @@ function loadFriendChatMessages(friendUid) {
         }
 
         chatMessages.innerHTML = '';
-        Object.values(messages).forEach(message => {
+        const messageEntries = Object.entries(messages);
+
+        messageEntries.forEach(([messageKey, message]) => {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `chat-message ${message.from === window.currentUser.uid ? 'sent' : 'received'}`;
+            const isOwn = message.from === window.currentUser.uid;
+            messageDiv.className = `chat-message ${isOwn ? 'sent' : 'received'}`;
+            messageDiv.dataset.messageId = messageKey;
+            messageDiv.dataset.chatId = chatId;
+
+            // Message wrapper for content and dropdown
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = 'message-wrapper';
 
             const messageContent = document.createElement('div');
+            messageContent.className = 'message-text';
             messageContent.textContent = message.text;
+
+            // Single dropdown arrow button
+            const dropdownBtn = document.createElement('button');
+            dropdownBtn.className = 'message-dropdown-btn';
+            dropdownBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            dropdownBtn.title = 'Options';
+            dropdownBtn.onclick = (e) => {
+                e.stopPropagation();
+                showMessageDropdownMenu(e, chatId, messageKey, message.text, isOwn, dropdownBtn);
+            };
+
+            messageWrapper.appendChild(messageContent);
+            messageWrapper.appendChild(dropdownBtn);
 
             const messageTime = document.createElement('div');
             messageTime.className = 'message-time';
             messageTime.textContent = new Date(message.timestamp).toLocaleTimeString();
 
-            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(messageWrapper);
             messageDiv.appendChild(messageTime);
+
             chatMessages.appendChild(messageDiv);
         });
 
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 }
+
+// Show delete confirmation dialog
+function showDeleteMessageConfirm(chatId, messageKey) {
+    if (typeof customConfirm === 'function') {
+        customConfirm('Are you sure you want to delete this message?').then(confirmed => {
+            if (confirmed) deleteMessage(chatId, messageKey);
+        });
+    } else if (confirm('Are you sure you want to delete this message?')) {
+        deleteMessage(chatId, messageKey);
+    }
+}
+
+// Delete a message from Firebase
+function deleteMessage(chatId, messageKey) {
+    database.ref(`chats/${chatId}/${messageKey}`).remove()
+        .then(() => {
+            showNotification('Message deleted', 'success');
+        })
+        .catch((error) => {
+            showNotification('Error deleting message: ' + error.message, 'error');
+        });
+}
+
+// Show dropdown menu attached to the button
+function showMessageDropdownMenu(event, chatId, messageKey, messageText, isOwn, buttonEl) {
+    // Remove any existing menu
+    const existingMenu = document.getElementById('messageDropdownMenu');
+    if (existingMenu) existingMenu.remove();
+
+    const menu = document.createElement('div');
+    menu.id = 'messageDropdownMenu';
+    menu.className = 'message-dropdown-menu';
+
+    // Position the menu relative to the button
+    const rect = buttonEl.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 4) + 'px';
+
+    // Position based on whether message is sent or received
+    if (isOwn) {
+        menu.style.right = (window.innerWidth - rect.right) + 'px';
+    } else {
+        menu.style.left = rect.left + 'px';
+    }
+
+    // Copy option
+    const copyOption = document.createElement('div');
+    copyOption.className = 'dropdown-menu-item';
+    copyOption.innerHTML = '<i class="fas fa-copy"></i> Copy';
+    copyOption.onclick = () => {
+        navigator.clipboard.writeText(messageText);
+        showNotification('Message copied!', 'success');
+        menu.remove();
+    };
+    menu.appendChild(copyOption);
+
+    // Delete option (only for own messages)
+    if (isOwn) {
+        const deleteOption = document.createElement('div');
+        deleteOption.className = 'dropdown-menu-item delete';
+        deleteOption.innerHTML = '<i class="fas fa-trash-alt"></i> Delete';
+        deleteOption.onclick = () => {
+            menu.remove();
+            showDeleteMessageConfirm(chatId, messageKey);
+        };
+        menu.appendChild(deleteOption);
+    }
+
+    document.body.appendChild(menu);
+
+    // Close menu on click outside
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target) && e.target !== buttonEl) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 10);
+}
+
+window.showMessageDropdownMenu = showMessageDropdownMenu;
+
+// Friend Info/Profile Panel Functions (WhatsApp-style sidebar)
+async function showFriendInfoPanel() {
+    if (!currentChatFriend) return;
+
+    // Hide chat view and show profile panel
+    document.getElementById('chatConversationView').style.display = 'none';
+
+    // Create or get profile panel
+    let profilePanel = document.getElementById('friendProfilePanel');
+    if (!profilePanel) {
+        profilePanel = document.createElement('div');
+        profilePanel.id = 'friendProfilePanel';
+        profilePanel.className = 'sidebar-view friend-profile-panel';
+        profilePanel.innerHTML = `
+            <div class="sidebar-header" style="display: flex; align-items: center; border-bottom: 1px solid var(--border-color);">
+                <button id="backFromProfileBtn" title="Back" class="icon-btn" style="margin-right: 10px;"><i class="fas fa-arrow-left"></i></button>
+                <span style="font-weight: 600;">Contact Info</span>
+            </div>
+            <div class="profile-panel-content">
+                <div class="profile-panel-header">
+                    <div class="profile-panel-avatar-container" onclick="openProfilePictureModal()" style="cursor: pointer;" title="View profile picture">
+                        <div id="panelProfileAvatar" class="profile-panel-avatar"></div>
+                        <span id="panelProfileStatus" class="profile-panel-status-dot offline"></span>
+                    </div>
+                    <h3 id="panelProfileName" class="profile-panel-name"></h3>
+                    <span id="panelProfileUsername" class="profile-panel-username"></span>
+                    <span id="panelProfileStatusText" class="profile-panel-status-text">Offline</span>
+                </div>
+                
+                <div class="profile-panel-section">
+                    <div class="profile-panel-section-title">About</div>
+                    <div class="profile-panel-info-item">
+                        <i class="fas fa-envelope"></i>
+                        <div class="info-content">
+                            <span class="info-label">Email</span>
+                            <span id="panelProfileEmail" class="info-value"></span>
+                        </div>
+                    </div>
+                    <div class="profile-panel-info-item">
+                        <i class="fas fa-user-plus"></i>
+                        <div class="info-content">
+                            <span class="info-label">Friends Since</span>
+                            <span id="panelProfileAddedAt" class="info-value"></span>
+                        </div>
+                    </div>
+                    <div id="panelProfileLastSeenItem" class="profile-panel-info-item" style="display:none;">
+                        <i class="fas fa-clock"></i>
+                        <div class="info-content">
+                            <span class="info-label">Last Seen</span>
+                            <span id="panelProfileLastSeen" class="info-value"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="profile-panel-section">
+                    <div class="profile-panel-section-title">Actions</div>
+                    <div class="profile-panel-action" onclick="clearChatHistoryFromPanel()">
+                        <i class="fas fa-broom"></i>
+                        <span>Clear Chat History</span>
+                    </div>
+                    <div class="profile-panel-action danger" onclick="removeFriendFromPanel()">
+                        <i class="fas fa-user-minus"></i>
+                        <span>Remove Friend</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Insert after chatConversationView
+        const chatView = document.getElementById('chatConversationView');
+        chatView.parentNode.insertBefore(profilePanel, chatView.nextSibling);
+
+        // Add back button handler
+        document.getElementById('backFromProfileBtn').addEventListener('click', hideProfilePanel);
+    }
+
+    // Populate profile data
+    const photoURL = await getUserPhoto(currentChatFriend.uid, currentChatFriend.photoURL);
+    const avatarEl = document.getElementById('panelProfileAvatar');
+
+    if (photoURL) {
+        avatarEl.innerHTML = `<img src="${photoURL}" alt="${currentChatFriend.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    } else {
+        avatarEl.innerHTML = '';
+        avatarEl.textContent = (currentChatFriend.name || 'U').charAt(0).toUpperCase();
+    }
+
+    document.getElementById('panelProfileName').textContent = currentChatFriend.name || 'Unknown';
+    document.getElementById('panelProfileEmail').textContent = currentChatFriend.email || 'Not available';
+
+    // Get username
+    const usernameSnapshot = await database.ref(`usernames/${currentChatFriend.uid}`).once('value');
+    const username = usernameSnapshot.val();
+    document.getElementById('panelProfileUsername').textContent = username ? '@' + username : '';
+
+    // Get status
+    const statusSnapshot = await database.ref(`status/${currentChatFriend.uid}`).once('value');
+    const statusData = statusSnapshot.val();
+    const status = statusData?.state || 'offline';
+    const lastSeen = statusData?.last_changed;
+
+    document.getElementById('panelProfileStatus').className = `profile-panel-status-dot ${status}`;
+    document.getElementById('panelProfileStatusText').textContent = status === 'online' ? 'Online' : 'Offline';
+    document.getElementById('panelProfileStatusText').className = `profile-panel-status-text ${status}`;
+
+    if (lastSeen && status === 'offline') {
+        document.getElementById('panelProfileLastSeenItem').style.display = 'flex';
+        document.getElementById('panelProfileLastSeen').textContent = new Date(lastSeen).toLocaleString();
+    } else {
+        document.getElementById('panelProfileLastSeenItem').style.display = 'none';
+    }
+
+    // Get friend added date
+    const friendSnapshot = await database.ref(`friends/${window.currentUser.uid}/${currentChatFriend.uid}`).once('value');
+    const friendData = friendSnapshot.val();
+    document.getElementById('panelProfileAddedAt').textContent = friendData?.addedAt ? new Date(friendData.addedAt).toLocaleDateString() : 'Unknown';
+
+    // Show panel
+    profilePanel.style.display = 'flex';
+}
+
+function hideProfilePanel() {
+    const profilePanel = document.getElementById('friendProfilePanel');
+    if (profilePanel) profilePanel.style.display = 'none';
+    document.getElementById('chatConversationView').style.display = 'flex';
+}
+
+// Wrapper functions for panel actions
+async function clearChatHistoryFromPanel() {
+    await clearChatHistory();
+    hideProfilePanel();
+}
+
+async function removeFriendFromPanel() {
+    await removeFriendFromProfile();
+}
+
+// Keep the old showFriendInfo for backwards compatibility but redirect to panel
+function showFriendInfo() {
+    showFriendInfoPanel();
+}
+
+// Make functions globally accessible
+window.showFriendInfoPanel = showFriendInfoPanel;
+window.hideProfilePanel = hideProfilePanel;
+window.clearChatHistoryFromPanel = clearChatHistoryFromPanel;
+window.removeFriendFromPanel = removeFriendFromPanel;
+
+// Open profile picture in fullscreen modal
+function openProfilePictureModal() {
+    if (!currentChatFriend) return;
+
+    // Create or get the modal
+    let modal = document.getElementById('profilePictureModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'profilePictureModal';
+        modal.className = 'profile-picture-modal';
+        modal.innerHTML = `
+            <div class="profile-picture-modal-backdrop" onclick="closeProfilePictureModal()"></div>
+            <div class="profile-picture-modal-content">
+                <button class="profile-picture-close-btn" onclick="closeProfilePictureModal()"><i class="fas fa-times"></i></button>
+                <div id="profilePictureModalImage" class="profile-picture-modal-image"></div>
+                <div id="profilePictureModalName" class="profile-picture-modal-name"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    // Get the avatar content
+    const avatarEl = document.getElementById('panelProfileAvatar');
+    const imgEl = avatarEl.querySelector('img');
+
+    const imageContainer = document.getElementById('profilePictureModalImage');
+    if (imgEl) {
+        imageContainer.innerHTML = `<img src="${imgEl.src}" alt="${currentChatFriend.name}">`;
+    } else {
+        // Show initials if no photo
+        imageContainer.innerHTML = '';
+        imageContainer.textContent = (currentChatFriend.name || 'U').charAt(0).toUpperCase();
+        imageContainer.classList.add('initials');
+    }
+
+    document.getElementById('profilePictureModalName').textContent = currentChatFriend.name || 'Unknown';
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeProfilePictureModal() {
+    const modal = document.getElementById('profilePictureModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+window.openProfilePictureModal = openProfilePictureModal;
+window.closeProfilePictureModal = closeProfilePictureModal;
+
+// Clear chat history with friend
+async function clearChatHistory() {
+    if (!currentChatFriend) return;
+
+    const confirmClear = typeof customConfirm === 'function'
+        ? await customConfirm(`Clear all chat history with ${currentChatFriend.name}? This cannot be undone.`)
+        : confirm(`Clear all chat history with ${currentChatFriend.name}? This cannot be undone.`);
+
+    if (!confirmClear) return;
+
+    try {
+        const chatId = [window.currentUser.uid, currentChatFriend.uid].sort().join('_');
+        await database.ref(`chats/${chatId}`).remove();
+        showNotification('Chat history cleared', 'success');
+        const modal = document.getElementById('friendProfileModal');
+        if (modal) modal.style.display = 'none';
+    } catch (error) {
+        showNotification('Error clearing chat: ' + error.message, 'error');
+    }
+}
+
+// Remove friend from profile modal
+async function removeFriendFromProfile() {
+    if (!currentChatFriend) return;
+
+    const confirmRemove = typeof customConfirm === 'function'
+        ? await customConfirm(`Remove ${currentChatFriend.name} from your friends list?`)
+        : confirm(`Remove ${currentChatFriend.name} from your friends list?`);
+
+    if (!confirmRemove) return;
+
+    try {
+        const updates = {};
+        updates[`friends/${window.currentUser.uid}/${currentChatFriend.uid}`] = null;
+        updates[`friends/${currentChatFriend.uid}/${window.currentUser.uid}`] = null;
+
+        // Delete chat data
+        const chatId = [window.currentUser.uid, currentChatFriend.uid].sort().join('_');
+        updates[`chats/${chatId}`] = null;
+
+        await database.ref().update(updates);
+
+        const modal = document.getElementById('friendProfileModal');
+        if (modal) modal.style.display = 'none';
+
+        // Go back to chats view
+        document.getElementById('chatConversationView').style.display = 'none';
+        document.getElementById('chatsView').style.display = 'block';
+
+        showNotification(`${currentChatFriend.name} removed from friends`);
+        currentChatFriend = null;
+    } catch (error) {
+        console.error('Error removing friend:', error);
+        showNotification('Error removing friend: ' + error.message);
+    }
+}
+
+// Make functions globally accessible
+window.deleteMessage = deleteMessage;
+window.showMessageContextMenu = showMessageContextMenu;
+window.clearChatHistory = clearChatHistory;
+window.removeFriendFromProfile = removeFriendFromProfile;
 
 function loadCommunityMessages(communityId) {
     const chatMessages = document.getElementById('sidebarChatMessages');
@@ -7554,6 +8017,26 @@ function showExplorerContextMenu(e, menuType, data) {
 
     if (menuType === 'temp-file') {
         items.push({ icon: 'fas fa-folder-open', label: 'Open', action: () => openTempFile(data) });
+        items.push({
+            icon: 'fas fa-cloud-upload-alt',
+            label: 'Save to Cloud',
+            action: () => {
+                // Fetch latest content to ensure we don't save stale boilerplate
+                const storedFiles = JSON.parse(localStorage.getItem('temp_files') || '[]');
+                const freshFile = storedFiles.find(f => f.name === data.name);
+                const realContent = freshFile ? freshFile.content : data.content;
+
+                // Parse extension
+                let fileName = data.name;
+                let extension = '.js';
+                const lastDotIndex = fileName.lastIndexOf('.');
+                if (lastDotIndex > 0) {
+                    extension = fileName.substring(lastDotIndex);
+                    fileName = fileName.substring(0, lastDotIndex);
+                }
+                openSaveToCloudModal(fileName, extension, null, false, realContent);
+            }
+        });
         items.push({ icon: 'fas fa-share-alt', label: 'Share', action: () => shareTempFile(data) });
         items.push({ separator: true });
         items.push({ icon: 'fas fa-trash', label: 'Delete', action: () => deleteTempFile(data), danger: true });
@@ -7638,14 +8121,20 @@ function refreshExplorer() {
 
 // Temp file actions
 function openTempFile(file) {
+    // Fetch latest data from storage to ensure we have the newest content
+    // avoiding stale closure data from the UI list
+    const storedFiles = JSON.parse(localStorage.getItem('temp_files') || '[]');
+    const latestFile = storedFiles.find(f => f.name === file.name);
+
+    const contentToLoad = latestFile ? latestFile.content : file.content;
+    const languageToLoad = latestFile ? latestFile.language : file.language;
+
     const existingTabIdx = editorTabs.findIndex(t => t.name === file.name);
     if (existingTabIdx >= 0) {
-        // Update the tab content with temp file data to ensure it's fresh
-        editorTabs[existingTabIdx].content = file.content;
-        editorTabs[existingTabIdx].language = file.language;
+        // Tab exists, simply switch to it
         switchToTab(existingTabIdx);
     } else {
-        addTab(file.name, file.content, file.language);
+        addTab(file.name, contentToLoad, languageToLoad);
         const newTabIndex = editorTabs.length - 1;
         renderTabs();
         switchToTab(newTabIndex);
@@ -9354,7 +9843,7 @@ function handleSaveAs() {
 }
 
 // Open the Save to Cloud modal
-function openSaveToCloudModal(fileName, extension, initialContext = null, isNewFile = false) {
+function openSaveToCloudModal(fileName, extension, initialContext = null, isNewFile = false, explicitContent = null) {
     if (!window.currentUser) {
         showNotification('Please login first to save to cloud!');
         return;
@@ -9366,6 +9855,9 @@ function openSaveToCloudModal(fileName, extension, initialContext = null, isNewF
 
     // Track if this is a new file creation
     cloudNavState.isNewFileCreation = isNewFile;
+
+    // Store explicit content if provided (for context menu saves)
+    cloudNavState.sourceContent = explicitContent;
 
     // Set navigation state
     if (initialContext) {
@@ -9760,7 +10252,10 @@ function saveToCurrentCloudLocation() {
         return;
     }
 
-    const content = editor ? editor.getValue() : '';
+    const content = (cloudNavState.sourceContent !== null && cloudNavState.sourceContent !== undefined)
+        ? cloudNavState.sourceContent
+        : (editor ? editor.getValue() : '');
+
     const language = getLanguageFromExtension(extension);
     const fullFileName = fileName + extension;
 

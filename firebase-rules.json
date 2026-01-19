@@ -66,6 +66,13 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
+    "status": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
     "chats": {
       "$chatId": {
         ".read": "auth != null",
