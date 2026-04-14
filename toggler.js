@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ---------------- AI Model URLs ---------------- */
     const MODEL_URLS = {
         blackbox: "https://app.blackbox.ai/",
-        google: "https://www.google.com/?igu=1" // embeddable google
+        google: "https://www.google.com/ai/?igu=1" // embeddable google
     };
 
     /* =======================================================
