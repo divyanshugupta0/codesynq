@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ---------------- AI Model URLs ---------------- */
     const MODEL_URLS = {
         blackbox: "https://app.blackbox.ai/",
-        google: "https://www.google.com/ai/?igu=1" // embeddable google
+        google: "https://www.google.com/search?igu=1&q=&sca_esv=51551707418ed362&sxsrf=ANbL-n4BNH2mBgaJw4UxZdp--93a7LWE4A%3A1776156884369&source=hp&ei=1ADeaenFE4u-vr0Pj7WDgAM&iflsig=AFdpzrgAAAAAad4O5Lv4HAu_sFs8cGRmpe4PEgzUTbj6&aep=22&udm=50&ved=0ahUKEwjp_56B_OyTAxULn68BHY_aADAQteYPCBk&oq=&gs_lp=Egdnd3Mtd2l6IgBIAFAAWABwAHgAkAEAmAEAoAEAqgEAuAEByAEAmAIAoAIAmAMAkgcAoAcAsgcAuAcAwgcAyAcAgAgA&sclient=gws-wiz" // embeddable google
     };
 
     /* =======================================================
