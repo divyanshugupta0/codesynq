@@ -2458,6 +2458,7 @@ function setupSettingsHandlers() {
     const cursorStyleSelect = document.getElementById('cursorStyleSelect');
     const executionModeSelect = document.getElementById('executionModeSelect');
     const mouseSparkToggle = document.getElementById('mouseSparkToggle');
+    const aiButtonToggle = document.getElementById('aiButtonToggle');
 
 
     // Helper to update slider track gradient
@@ -2585,6 +2586,17 @@ function setupSettingsHandlers() {
         });
     }
 
+     if (aiButtonToggle) {
+        aiButtonToggle.addEventListener('change', function () {
+            const drawerBtn = document.getElementById('drawerOpenBtn');
+            if (drawerBtn) {
+                drawerBtn.style.display = this.checked ? '' : 'none';
+            }
+            saveEditorSetting('aiButton', this.checked);
+            localStorage.setItem('aiButton', this.checked);
+            showNotification(`AI Button ${this.checked ? 'shown' : 'hidden'}`);
+        });
+    }
 
 }
 
@@ -2623,7 +2635,8 @@ function loadEditorSettings() {
             lineNumbers: JSON.parse(localStorage.getItem('editor_lineNumbers') || 'true'),
             minimap: JSON.parse(localStorage.getItem('editor_minimap') || 'false'),
             cursorStyle: JSON.parse(localStorage.getItem('editor_cursorStyle') || '"line"'),
-            mouseSparks: localStorage.getItem('mouseSparks') === 'true'
+            mouseSparks: localStorage.getItem('mouseSparks') === 'true',
+            aiButton: localStorage.getItem('aiButton') !== 'false'
         };
         // Ensure editor is ready before applying settings
         if (editor) {
@@ -2674,6 +2687,19 @@ function applyEditorSettings(settings) {
         if (window.toggleMouseSparks) window.toggleMouseSparks(settings.mouseSparks);
     }
 
+    
+    // Apply AI button visibility
+    const aiButtonToggle = document.getElementById('aiButtonToggle');
+    const drawerBtn = document.getElementById('drawerOpenBtn');
+    if (settings.aiButton !== undefined) {
+        if (aiButtonToggle) aiButtonToggle.checked = settings.aiButton;
+        if (drawerBtn) drawerBtn.style.display = settings.aiButton ? '' : 'none';
+    } else {
+        // Default: show the button
+        if (aiButtonToggle) aiButtonToggle.checked = true;
+        if (drawerBtn) drawerBtn.style.display = '';
+    }
+    
     // Apply to editor
     if (editor) {
         editor.updateOptions({
